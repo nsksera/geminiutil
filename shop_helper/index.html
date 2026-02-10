@@ -2,7 +2,8 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- viewport-fit=cover を追加してセーフエリアに対応 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>お買い物サポーター</title>
     
     <!-- React and ReactDOM -->
@@ -42,9 +43,9 @@
         }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 font-sans h-screen overflow-hidden select-none">
+<body class="bg-gray-50 text-gray-800 font-sans h-[100dvh] w-screen overflow-hidden select-none">
 
-    <div id="root" class="h-full"></div>
+    <div id="root" class="h-full w-full"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
@@ -52,20 +53,19 @@
         // SVGアイコンコンポーネント
         const Icons = {
             Trash2: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>,
-            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
-            Minus: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/></svg>,
-            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.76.73l.97-.6a2 2 0 0 1 2.33.22l.19.18a2 2 0 0 0 2.82-.24l.22-.38a2 2 0 0 0-.73-2.73l-.97-.6a2 2 0 0 1-.22-2.34l.6-.97a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15-.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
+            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
+            Minus: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/></svg>,
             ShoppingCart: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>,
             RefreshCw: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>,
             Edit: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>,
             Edit2: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>,
             Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
-            X: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            X: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+            Percent: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
         };
 
         const App = () => {
             // --- State Management ---
-            // 予算
             const [budget, setBudget] = useState(3000);
             const [isBudgetEditing, setIsBudgetEditing] = useState(false);
             
@@ -75,19 +75,13 @@
             const [taxRate, setTaxRate] = useState(0.08); // 0.08 or 0.10
             const [quantity, setQuantity] = useState(1);
             const [memo, setMemo] = useState('');
+            const [discountRate, setDiscountRate] = useState(0); // 割引率 (%)
             
-            // 編集モードの状態 (nullなら新規追加モード、IDが入っていれば編集モード)
             const [editingId, setEditingId] = useState(null);
-
-            // 商品リスト
             const [items, setItems] = useState([]);
-
-            // アプリ読み込み完了フラグ
             const [isLoaded, setIsLoaded] = useState(false);
 
             // --- Effects (LocalStorage) ---
-
-            // 初回マウント時にロード
             useEffect(() => {
                 const savedData = localStorage.getItem('shopping-app-data-v1');
                 if (savedData) {
@@ -102,100 +96,86 @@
                 setIsLoaded(true);
             }, []);
 
-            // データ変更時に保存
             useEffect(() => {
                 if (!isLoaded) return;
-                const dataToSave = {
-                    budget,
-                    items
-                };
+                const dataToSave = { budget, items };
                 localStorage.setItem('shopping-app-data-v1', JSON.stringify(dataToSave));
             }, [budget, items, isLoaded]);
 
             // --- Logic ---
-
-            // 合計金額の計算（すべての商品の合計）
             const totalAmount = items.reduce((sum, item) => sum + item.subtotal, 0);
-            
-            // 残金
             const remainingBudget = (budget || 0) - totalAmount;
             const isOverBudget = remainingBudget < 0;
 
-            // 商品追加・更新処理
             const addOrUpdateItem = () => {
-                if (!price || isNaN(price)) return; // 価格未入力なら何もしない
-
+                if (!price || isNaN(price)) return;
                 const unitPrice = parseFloat(price);
-                let finalPricePerItem = 0;
+                
+                // 1. 割引計算 (予算管理用なので端数は切り上げて高めに見積もる)
+                const discountedPrice = Math.ceil(unitPrice * (1 - discountRate / 100));
 
-                // 仕様: 端数処理は切り上げ
+                let finalPricePerItem = 0;
                 if (taxType === 'excluded') {
-                    // 税抜き: 価格 * (1 + 税率) -> 切り上げ
-                    finalPricePerItem = Math.ceil(unitPrice * (1 + taxRate));
+                    // 税抜き: 割引後価格 * (1 + 税率) -> 切り上げ
+                    finalPricePerItem = Math.ceil(discountedPrice * (1 + taxRate));
                 } else {
-                    // 税込み: そのまま
-                    finalPricePerItem = Math.ceil(unitPrice); // 念のため整数化
+                    // 税込み: 割引後価格そのもの
+                    finalPricePerItem = Math.ceil(discountedPrice);
                 }
 
                 const commonData = {
                     memo: memo,
-                    inputPrice: unitPrice,
+                    inputPrice: unitPrice, // 元値
+                    discountRate: discountRate, // 割引率
                     taxType: taxType,
-                    taxRate: taxType === 'excluded' ? taxRate : null, // 税込なら税率はnull扱い
+                    taxRate: taxType === 'excluded' ? taxRate : null,
                     quantity: quantity,
                     subtotal: finalPricePerItem * quantity
                 };
 
                 if (editingId) {
-                    // --- 更新処理 ---
                     setItems(items.map(item => 
                         item.id === editingId ? { ...item, ...commonData } : item
                     ));
-                    setEditingId(null); // 編集モード終了
+                    setEditingId(null);
                 } else {
-                    // --- 新規追加処理 ---
                     const newItem = {
-                        id: Date.now(), // ユニークID
+                        id: Date.now(),
                         ...commonData
                     };
                     setItems([...items, newItem]);
                 }
 
-                // フォームリセット
+                // リセット
                 setPrice('');
                 setMemo('');
                 setQuantity(1);
+                setDiscountRate(0);
             };
 
-            // 編集モード開始処理
             const startEditing = (item) => {
                 setEditingId(item.id);
                 setPrice(item.inputPrice.toString());
                 setMemo(item.memo);
                 setTaxType(item.taxType);
-                // 税率が存在する場合のみセット、なければデフォルト維持(または前回の値)
                 if (item.taxRate) setTaxRate(item.taxRate);
                 setQuantity(item.quantity);
+                setDiscountRate(item.discountRate || 0);
             };
 
-            // 編集キャンセル処理
             const cancelEditing = () => {
                 setEditingId(null);
                 setPrice('');
                 setMemo('');
                 setQuantity(1);
+                setDiscountRate(0);
             };
 
-            // 商品削除処理
             const deleteItem = (id) => {
-                // 編集中にそのアイテムを削除した場合、編集モードもキャンセルする
-                if (editingId === id) {
-                    cancelEditing();
-                }
+                if (editingId === id) cancelEditing();
                 setItems(items.filter(item => item.id !== id));
             };
 
-            // 全データリセット
             const resetAll = () => {
                 if (window.confirm('買い物リストをすべて消去しますか？\n（予算設定は残ります）')) {
                     setItems([]);
@@ -203,18 +183,16 @@
                 }
             };
 
-            // 数値フォーマット (カンマ区切り)
             const fmt = (num) => num ? num.toLocaleString() : '0';
 
             // --- Render Components ---
-
             if (!isLoaded) return null;
 
             return (
                 <div class="flex flex-col h-full bg-gray-100 max-w-md mx-auto shadow-2xl overflow-hidden relative">
                     
-                    {/* Header Area */}
-                    <div class={`p-4 transition-colors duration-300 ${isOverBudget ? 'bg-red-600' : 'bg-blue-600'} text-white shadow-md z-10`}>
+                    {/* Header */}
+                    <div class={`p-4 transition-colors duration-300 flex-shrink-0 ${isOverBudget ? 'bg-red-600' : 'bg-blue-600'} text-white shadow-md z-10`}>
                         <div class="flex justify-between items-start mb-2">
                             <h1 class="font-bold text-lg flex items-center gap-2">
                                 <Icons.ShoppingCart /> 
@@ -232,7 +210,6 @@
                             </div>
                             
                             <div class="text-right flex flex-col items-end">
-                                {/* 予算エリア */}
                                 <div class="flex items-center justify-end mb-1 h-10">
                                     <span class="text-sm opacity-90 mr-2">予算</span>
                                     {isBudgetEditing ? (
@@ -240,16 +217,11 @@
                                             type="number"
                                             inputMode="numeric" 
                                             pattern="[0-9]*"
-                                            class="w-32 text-gray-800 px-2 py-1 rounded-md text-right text-xl font-bold shadow-inner focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                            class="w-28 text-gray-800 px-2 py-1 rounded-md text-right text-xl font-bold shadow-inner focus:outline-none focus:ring-2 focus:ring-blue-300"
                                             value={budget}
                                             onChange={(e) => setBudget(e.target.value === '' ? '' : parseInt(e.target.value))}
-                                            onBlur={() => {
-                                                if(budget === '') setBudget(0);
-                                                setIsBudgetEditing(false);
-                                            }}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') e.target.blur();
-                                            }}
+                                            onBlur={() => { if(budget === '') setBudget(0); setIsBudgetEditing(false); }}
+                                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                                             autoFocus
                                         />
                                     ) : (
@@ -262,7 +234,6 @@
                                         </button>
                                     )}
                                 </div>
-                                
                                 <div class={`text-lg font-bold ${remainingBudget < 0 ? 'text-yellow-300' : 'text-white'}`}>
                                     残り ¥{fmt(remainingBudget)}
                                 </div>
@@ -270,8 +241,8 @@
                         </div>
                     </div>
 
-                    {/* List Area (Scrollable) */}
-                    <div class="flex-1 overflow-y-auto p-3 pb-40 no-scrollbar space-y-2">
+                    {/* List Area */}
+                    <div class="flex-1 overflow-y-auto p-3 pb-52 no-scrollbar space-y-2 w-full">
                         {items.length === 0 ? (
                             <div class="h-full flex flex-col items-center justify-center text-gray-400 opacity-60 mt-10">
                                 <Icons.ShoppingCart />
@@ -282,36 +253,56 @@
                                 const isEditingThis = editingId === item.id;
                                 return (
                                     <div key={item.id} class={`bg-white p-3 rounded-lg shadow-sm border flex justify-between items-center animate-[fadeIn_0.2s_ease-out] transition-colors ${isEditingThis ? 'border-blue-400 ring-1 ring-blue-100 bg-blue-50' : 'border-gray-100'}`}>
-                                        <div class="flex-1">
+                                        <div class="flex-1 min-w-0">
+                                            {/* メイン: 金額表示 */}
                                             <div class="flex items-baseline gap-2">
-                                                <span class="font-bold text-lg text-gray-800">¥{fmt(item.subtotal)}</span>
-                                                <span class="text-xs text-gray-500">
-                                                    (@{fmt(Math.ceil(item.subtotal / item.quantity))} × {item.quantity})
-                                                </span>
+                                                <span class="font-bold text-xl text-gray-800">¥{fmt(item.subtotal)}</span>
+                                                <span class="text-xs text-gray-400">(税込)</span>
                                             </div>
-                                            <div class="text-xs text-gray-500 flex gap-2 mt-1">
-                                                <span class="bg-gray-100 px-1.5 py-0.5 rounded">
-                                                    {item.taxType === 'included' ? '税込' : `税抜${Math.round(item.taxRate*100)}%`}
-                                                </span>
+
+                                            {/* サブ: 詳細内訳表示 */}
+                                            <div class="text-xs text-gray-500 mt-1 leading-relaxed">
+                                                <div class="flex flex-wrap items-center gap-x-1">
+                                                    {/* 単価 */}
+                                                    <span>@{fmt(item.inputPrice)}</span>
+                                                    
+                                                    {/* 割引表示 */}
+                                                    {item.discountRate > 0 && (
+                                                        <span class="text-red-500 font-bold bg-red-50 px-1 rounded">
+                                                            -{item.discountRate}%
+                                                        </span>
+                                                    )}
+
+                                                    {/* 税表示 */}
+                                                    {item.taxType === 'excluded' ? (
+                                                        <span>
+                                                            <span class="text-gray-400">+</span>
+                                                            <span class="bg-gray-100 px-1 rounded text-gray-600">税{Math.round(item.taxRate*100)}%</span>
+                                                        </span>
+                                                    ) : (
+                                                        <span class="bg-gray-100 px-1 rounded text-gray-600">税込</span>
+                                                    )}
+
+                                                    {/* 個数 */}
+                                                    <span class="text-gray-400">×</span>
+                                                    <span class="font-bold text-gray-700">{item.quantity}</span>
+                                                </div>
+
+                                                {/* メモ */}
                                                 {item.memo && (
-                                                    <span class="text-gray-600 truncate max-w-[120px]">
+                                                    <div class="text-gray-600 truncate mt-0.5 pl-0.5 border-l-2 border-gray-200">
                                                         {item.memo}
-                                                    </span>
+                                                    </div>
                                                 )}
-                                                {isEditingThis && <span class="text-blue-600 font-bold ml-1">編集中...</span>}
+                                                {isEditingThis && <div class="text-blue-600 font-bold mt-0.5">編集中</div>}
                                             </div>
                                         </div>
-                                        <div class="flex gap-1">
-                                            <button 
-                                                onClick={() => startEditing(item)}
-                                                class={`p-2 transition-colors active:scale-95 rounded-full ${isEditingThis ? 'text-blue-600 bg-blue-100' : 'text-gray-400 hover:text-blue-500 hover:bg-gray-50'}`}
-                                            >
+
+                                        <div class="flex gap-1 flex-shrink-0 ml-2 self-start mt-1">
+                                            <button onClick={() => startEditing(item)} class={`p-2 transition-colors active:scale-95 rounded-full ${isEditingThis ? 'text-blue-600 bg-blue-100' : 'text-gray-400 hover:text-blue-500 hover:bg-gray-50'}`}>
                                                 <Icons.Edit2 />
                                             </button>
-                                            <button 
-                                                onClick={() => deleteItem(item.id)}
-                                                class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors active:scale-95"
-                                            >
+                                            <button onClick={() => deleteItem(item.id)} class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors active:scale-95">
                                                 <Icons.Trash2 />
                                             </button>
                                         </div>
@@ -319,14 +310,12 @@
                                 );
                             }).reverse()
                         )}
-                        {/* Spacer for fixed footer */}
-                        <div class="h-20"></div> 
+                        <div class="h-10"></div>
                     </div>
 
                     {/* Input Area (Fixed Bottom) */}
-                    <div class={`border-t p-3 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 transition-colors duration-300 ${editingId ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
+                    <div class={`border-t p-3 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 transition-colors duration-300 w-full ${editingId ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
                         
-                        {/* 編集中の表示 */}
                         {editingId && (
                             <div class="text-xs text-amber-600 font-bold mb-1 flex justify-between">
                                 <span>修正モード</span>
@@ -334,107 +323,80 @@
                             </div>
                         )}
 
-                        {/* 1行目: 値段とメモ */}
-                        <div class="flex gap-2 mb-3">
-                            <div class="flex-1 relative">
+                        {/* Row 1: 価格 & メモ */}
+                        <div class="flex gap-2 mb-2">
+                            <div class="flex-[3] relative">
                                 <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">¥</span>
                                 <input 
-                                    type="number" 
-                                    inputMode="numeric" 
-                                    pattern="[0-9]*"
-                                    placeholder="0" 
-                                    class="w-full bg-white border border-gray-300 rounded-lg py-3 pl-8 pr-3 text-xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    value={price}
-                                    onChange={(e) => setPrice(e.target.value)}
+                                    type="number" inputMode="numeric" pattern="[0-9]*" placeholder="0" 
+                                    class="w-full bg-white border border-gray-300 rounded-lg py-2 pl-8 pr-3 text-lg font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    value={price} onChange={(e) => setPrice(e.target.value)}
                                 />
                             </div>
                             <input 
-                                type="text" 
-                                placeholder="メモ (任意)" 
-                                class="w-1/3 bg-white border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                value={memo}
-                                onChange={(e) => setMemo(e.target.value)}
+                                type="text" placeholder="メモ" 
+                                class="flex-[2] bg-white border border-gray-300 rounded-lg px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
+                                value={memo} onChange={(e) => setMemo(e.target.value)}
                             />
                         </div>
 
-                        {/* 2行目: 税設定、個数、追加ボタン */}
-                        <div class="flex gap-2 items-stretch h-12">
-                            
-                            {/* 税設定エリア */}
-                            <div class="flex flex-col gap-1 flex-shrink-0 w-28">
+                        {/* Row 2: 割引設定 */}
+                        <div class="flex gap-1 mb-2 items-center overflow-x-auto no-scrollbar">
+                            <span class="text-xs font-bold text-gray-500 mr-1 flex-shrink-0 flex items-center gap-0.5">
+                                <Icons.Percent />引
+                            </span>
+                            {[5, 10, 15, 20].map(rate => (
+                                <button 
+                                    key={rate}
+                                    onClick={() => setDiscountRate(discountRate === rate ? 0 : rate)}
+                                    class={`px-3 py-1.5 rounded text-xs font-bold transition-all whitespace-nowrap border flex-1
+                                        ${discountRate === rate ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-600 border-gray-200'}`}
+                                >
+                                    {rate}%
+                                </button>
+                            ))}
+                            <div class="relative flex items-center w-16 flex-shrink-0 ml-1">
+                                <input 
+                                    type="number" placeholder="0"
+                                    class={`w-full text-right pr-4 pl-1 py-1 rounded border text-sm font-bold focus:outline-none focus:ring-1 focus:ring-red-500
+                                        ${discountRate > 0 && ![5,10,15,20].includes(discountRate) ? 'border-red-500 text-red-500 bg-red-50' : 'border-gray-300'}`}
+                                    value={discountRate || ''}
+                                    onChange={(e) => setDiscountRate(parseInt(e.target.value) || 0)}
+                                    onFocus={(e) => e.target.select()}
+                                />
+                                <span class="absolute right-1 text-xs text-gray-400">%</span>
+                            </div>
+                        </div>
+
+                        {/* Row 3: 税・個数・追加 */}
+                        <div class="flex gap-1 items-stretch h-10">
+                            {/* 税設定 */}
+                            <div class="flex flex-col gap-0.5 flex-shrink-0 w-24">
                                 <div class="flex bg-gray-100 rounded p-0.5 h-full">
-                                    <button 
-                                        class={`flex-1 text-xs rounded font-bold transition-all ${taxType === 'excluded' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}
-                                        onClick={() => setTaxType('excluded')}
-                                    >
-                                        税抜
-                                    </button>
-                                    <button 
-                                        class={`flex-1 text-xs rounded font-bold transition-all ${taxType === 'included' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}
-                                        onClick={() => setTaxType('included')}
-                                    >
-                                        税込
-                                    </button>
+                                    <button onClick={() => setTaxType('excluded')} class={`flex-1 text-[10px] rounded font-bold transition-all ${taxType === 'excluded' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}>税抜</button>
+                                    <button onClick={() => setTaxType('included')} class={`flex-1 text-[10px] rounded font-bold transition-all ${taxType === 'included' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}>税込</button>
                                 </div>
-                                {/* 税率選択 (税抜のときのみ有効) */}
                                 <div class={`flex bg-gray-100 rounded p-0.5 h-full transition-opacity ${taxType === 'included' ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
-                                    <button 
-                                        class={`flex-1 text-xs rounded font-bold transition-all ${taxRate === 0.08 ? 'bg-white shadow text-green-600' : 'text-gray-400'}`}
-                                        onClick={() => setTaxRate(0.08)}
-                                    >
-                                        8%
-                                    </button>
-                                    <button 
-                                        class={`flex-1 text-xs rounded font-bold transition-all ${taxRate === 0.10 ? 'bg-white shadow text-green-600' : 'text-gray-400'}`}
-                                        onClick={() => setTaxRate(0.10)}
-                                    >
-                                        10%
-                                    </button>
+                                    <button onClick={() => setTaxRate(0.08)} class={`flex-1 text-[10px] rounded font-bold transition-all ${taxRate === 0.08 ? 'bg-white shadow text-green-600' : 'text-gray-400'}`}>8%</button>
+                                    <button onClick={() => setTaxRate(0.10)} class={`flex-1 text-[10px] rounded font-bold transition-all ${taxRate === 0.10 ? 'bg-white shadow text-green-600' : 'text-gray-400'}`}>10%</button>
                                 </div>
                             </div>
 
                             {/* 個数 */}
-                            <div class="flex items-center bg-gray-100 rounded-lg px-1 w-24 justify-between">
-                                <button 
-                                    class="p-2 text-gray-500 active:text-blue-600 active:scale-90 transition"
-                                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                                >
-                                    <Icons.Minus />
-                                </button>
-                                <span class="font-bold text-lg w-6 text-center">{quantity}</span>
-                                <button 
-                                    class="p-2 text-gray-500 active:text-blue-600 active:scale-90 transition"
-                                    onClick={() => setQuantity(quantity + 1)}
-                                >
-                                    <Icons.Plus />
-                                </button>
+                            <div class="flex items-center bg-gray-100 rounded-lg px-0.5 w-20 justify-between flex-shrink-0">
+                                <button class="p-1.5 text-gray-500 active:text-blue-600 active:scale-90 transition" onClick={() => setQuantity(Math.max(1, quantity - 1))}><Icons.Minus /></button>
+                                <span class="font-bold text-base w-5 text-center">{quantity}</span>
+                                <button class="p-1.5 text-gray-500 active:text-blue-600 active:scale-90 transition" onClick={() => setQuantity(quantity + 1)}><Icons.Plus /></button>
                             </div>
 
-                            {/* 追加・更新・キャンセルボタン */}
+                            {/* ボタン */}
                             {editingId ? (
-                                <div class="flex-1 flex gap-1">
-                                    <button 
-                                        onClick={cancelEditing}
-                                        class="w-12 bg-gray-200 hover:bg-gray-300 rounded-lg text-gray-600 flex items-center justify-center shadow-sm active:scale-95 transition-all"
-                                    >
-                                        <Icons.X />
-                                    </button>
-                                    <button 
-                                        onClick={addOrUpdateItem}
-                                        class="flex-1 rounded-lg font-bold text-white flex items-center justify-center gap-1 shadow-sm active:scale-95 transition-all bg-green-600 hover:bg-green-700 shadow-green-200"
-                                    >
-                                        <Icons.Check /> 更新
-                                    </button>
+                                <div class="flex-1 flex gap-1 min-w-0">
+                                    <button onClick={cancelEditing} class="w-10 bg-gray-200 hover:bg-gray-300 rounded-lg text-gray-600 flex items-center justify-center shadow-sm active:scale-95 transition-all"><Icons.X /></button>
+                                    <button onClick={addOrUpdateItem} class="flex-1 rounded-lg font-bold text-white flex items-center justify-center gap-1 shadow-sm active:scale-95 transition-all bg-green-600 hover:bg-green-700 shadow-green-200"><span class="truncate">更新</span></button>
                                 </div>
                             ) : (
-                                <button 
-                                    onClick={addOrUpdateItem}
-                                    disabled={!price}
-                                    class={`flex-1 rounded-lg font-bold text-white flex items-center justify-center gap-1 shadow-sm active:scale-95 transition-all
-                                        ${!price ? 'bg-gray-300' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}`}
-                                >
-                                    追加
-                                </button>
+                                <button onClick={addOrUpdateItem} disabled={!price} class={`flex-1 rounded-lg font-bold text-white flex items-center justify-center gap-1 shadow-sm active:scale-95 transition-all ${!price ? 'bg-gray-300' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}`}>追加</button>
                             )}
                         </div>
                     </div>
@@ -444,9 +406,7 @@
                             from { opacity: 0; transform: translateY(10px); }
                             to { opacity: 1; transform: translateY(0); }
                         }
-                        .pb-safe {
-                            padding-bottom: env(safe-area-inset-bottom, 12px);
-                        }
+                        .pb-safe { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
                     `}</style>
                 </div>
             );
