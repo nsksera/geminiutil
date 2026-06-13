@@ -86,8 +86,14 @@
             
             const [editingId, setEditingId] = useState(null);
             const [items, setItems] = useState([]);
+            const [reminders, setReminders] = useState([]);
             const [isLoaded, setIsLoaded] = useState(false);
             const [isInputExpanded, setIsInputExpanded] = useState(true);
+            const [isRemindersExpanded, setIsRemindersExpanded] = useState(true);
+            const [isReminderAdding, setIsReminderAdding] = useState(false);
+            const [reminderDraft, setReminderDraft] = useState('');
+            const [confirmingReminderId, setConfirmingReminderId] = useState(null);
+            const [activeReminderId, setActiveReminderId] = useState(null);
 
             // --- Effects (LocalStorage) ---
             useEffect(() => {
@@ -97,6 +103,7 @@
                         const parsed = JSON.parse(savedData);
                         if (parsed.budget !== undefined) setBudget(parsed.budget);
                         if (parsed.items) setItems(parsed.items);
+                        if (parsed.reminders) setReminders(parsed.reminders);
                     } catch (e) {
                         console.error("データの読み込みに失敗しました", e);
                     }
@@ -106,9 +113,9 @@
 
             useEffect(() => {
                 if (!isLoaded) return;
-                const dataToSave = { budget, items };
+                const dataToSave = { budget, items, reminders };
                 localStorage.setItem('shopping-app-data-v1', JSON.stringify(dataToSave));
-            }, [budget, items, isLoaded]);
+            }, [budget, items, reminders, isLoaded]);
 
             // --- Logic ---
             const totalAmount = items.reduce((sum, item) => sum + item.subtotal, 0);
@@ -152,6 +159,10 @@
                         ...commonData
                     };
                     setItems([...items, newItem]);
+                    if (activeReminderId) {
+                        setReminders(current => current.filter(reminder => reminder.id !== activeReminderId));
+                        setActiveReminderId(null);
+                    }
                 }
 
                 // リセット
@@ -164,6 +175,7 @@
 
             const startEditing = (item) => {
                 setIsInputExpanded(true);
+                setActiveReminderId(null);
                 setEditingId(item.id);
                 setPrice(item.inputPrice.toString());
                 setMemo(item.memo);
@@ -181,6 +193,44 @@
                 setDiscountRate(0);
             };
 
+            const addReminder = () => {
+                const text = reminderDraft.trim();
+                if (!text) return;
+                setReminders(current => [...current, { id: Date.now(), text }]);
+                setReminderDraft('');
+                setIsReminderAdding(false);
+                setIsRemindersExpanded(true);
+            };
+
+            const startReminderPurchase = (reminder) => {
+                setEditingId(null);
+                setActiveReminderId(reminder.id);
+                setMemo(reminder.text);
+                setPrice('');
+                setQuantity(1);
+                setDiscountRate(0);
+                setIsInputExpanded(true);
+                requestAnimationFrame(() => priceInputRef.current?.focus());
+            };
+
+            const cancelReminderPurchase = () => {
+                setActiveReminderId(null);
+                setPrice('');
+                setMemo('');
+                setQuantity(1);
+                setDiscountRate(0);
+            };
+
+            const requestReminderDelete = (id) => {
+                if (confirmingReminderId === id) {
+                    setReminders(current => current.filter(reminder => reminder.id !== id));
+                    if (activeReminderId === id) cancelReminderPurchase();
+                    setConfirmingReminderId(null);
+                    return;
+                }
+                setConfirmingReminderId(id);
+            };
+
             const deleteItem = (id) => {
                 if (editingId === id) cancelEditing();
                 setItems(items.filter(item => item.id !== id));
@@ -189,7 +239,11 @@
             const resetAll = () => {
                 if (window.confirm('買い物リストをすべて消去しますか？\n（予算設定は残ります）')) {
                     setItems([]);
-                    cancelEditing();
+                    if (activeReminderId) {
+                        cancelReminderPurchase();
+                    } else {
+                        cancelEditing();
+                    }
                 }
             };
 
@@ -253,7 +307,72 @@
 
                     {/* List Area */}
                     <div class="flex-1 min-h-0 overflow-y-auto p-3 no-scrollbar space-y-2 w-full">
-                        {items.length === 0 ? (
+                        <section class="rounded-xl border border-amber-200 bg-amber-50/80 overflow-hidden shadow-sm">
+                            <div class="flex items-center gap-2 p-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsRemindersExpanded(!isRemindersExpanded)}
+                                    class="flex-1 min-w-0 h-10 px-2 flex items-center justify-between text-left text-amber-900 font-bold rounded-lg active:bg-amber-100"
+                                    aria-expanded={isRemindersExpanded}
+                                >
+                                    <span class="truncate">買い物メモ <span class="text-sm font-normal">{reminders.length}件</span></span>
+                                    {isRemindersExpanded ? <Icons.ChevronUp /> : <Icons.ChevronDown />}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsReminderAdding(true); setIsRemindersExpanded(true); }}
+                                    class="h-10 px-3 bg-amber-200 text-amber-900 rounded-lg text-sm font-bold active:bg-amber-300 whitespace-nowrap"
+                                >
+                                    ＋ 追加
+                                </button>
+                            </div>
+
+                            {isRemindersExpanded && (
+                                <div class="border-t border-amber-200 px-2 pb-2">
+                                    {isReminderAdding && (
+                                        <div class="flex gap-2 py-2">
+                                            <input
+                                                type="text"
+                                                value={reminderDraft}
+                                                onChange={(e) => setReminderDraft(e.target.value)}
+                                                onKeyDown={(e) => { if (e.key === 'Enter') addReminder(); }}
+                                                placeholder="例：サランラップ"
+                                                aria-label="買い物メモ"
+                                                class="min-w-0 flex-1 h-11 bg-white border border-amber-300 rounded-lg px-3 text-base focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                                autoFocus
+                                            />
+                                            <button type="button" onClick={addReminder} disabled={!reminderDraft.trim()} class="h-11 px-4 rounded-lg bg-amber-500 text-white font-bold disabled:bg-gray-300">登録</button>
+                                            <button type="button" onClick={() => { setIsReminderAdding(false); setReminderDraft(''); }} class="h-11 w-11 rounded-lg bg-white border border-gray-300 text-gray-500 flex items-center justify-center" aria-label="買い物メモの追加をキャンセル"><Icons.X /></button>
+                                        </div>
+                                    )}
+
+                                    {reminders.length === 0 ? (
+                                        <p class="py-2 px-2 text-sm text-amber-700/70">買い忘れそうなものをメモできます</p>
+                                    ) : (
+                                        <div class="space-y-1">
+                                            {reminders.map(reminder => (
+                                                <div key={reminder.id} class={`flex items-center gap-2 min-h-12 rounded-lg border px-2 ${activeReminderId === reminder.id ? 'bg-blue-50 border-blue-300' : 'bg-white/70 border-amber-100'}`}>
+                                                    <button type="button" onClick={() => startReminderPurchase(reminder)} class="flex-1 min-w-0 self-stretch text-left flex items-center gap-2 text-gray-500 active:text-blue-600">
+                                                        <span class="w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0"></span>
+                                                        <span class="truncate">{reminder.text}</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => requestReminderDelete(reminder.id)}
+                                                        class={`min-h-10 rounded-lg px-2 text-xs font-bold flex-shrink-0 transition-colors ${confirmingReminderId === reminder.id ? 'bg-red-600 text-white' : 'text-gray-400 active:bg-red-50 active:text-red-600'}`}
+                                                        aria-label={confirmingReminderId === reminder.id ? `${reminder.text}を削除しますか` : `${reminder.text}を削除`}
+                                                    >
+                                                        {confirmingReminderId === reminder.id ? '削除しますか？' : '削除'}
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </section>
+
+                        {items.length === 0 && reminders.length === 0 ? (
                             <div class="h-full flex flex-col items-center justify-center text-gray-400 opacity-60 mt-10">
                                 <Icons.ShoppingCart />
                                 <p class="mt-2 text-sm">商品を追加してください</p>
@@ -345,6 +464,13 @@
 
                         {isInputExpanded && (
                         <>
+
+                        {activeReminderId && (
+                            <div class="mb-3 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-700 flex items-center justify-between gap-2">
+                                <span class="truncate">買い物メモから入力中</span>
+                                <button type="button" onClick={cancelReminderPurchase} class="font-bold underline flex-shrink-0">キャンセル</button>
+                            </div>
+                        )}
                         
                         {editingId && (
                             <div class="text-xs text-amber-600 font-bold mb-1 flex justify-between">
@@ -355,7 +481,7 @@
 
                         {/* メモは任意項目として主要操作より上に配置 */}
                         <div class="mb-3">
-                            <label class="block text-xs font-bold text-gray-500 mb-1" htmlFor="item-memo">メモ（任意）</label>
+                            <label class="block text-xs font-bold text-gray-500 mb-1" htmlFor="item-memo">商品名など</label>
                             <input
                                 id="item-memo"
                                 type="text"
