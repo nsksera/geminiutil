@@ -248,7 +248,7 @@
                     </div>
 
                     {/* List Area */}
-                    <div class="flex-1 overflow-y-auto p-3 pb-[29rem] no-scrollbar space-y-2 w-full">
+                    <div class="flex-1 min-h-0 overflow-y-auto p-3 no-scrollbar space-y-2 w-full">
                         {items.length === 0 ? (
                             <div class="h-full flex flex-col items-center justify-center text-gray-400 opacity-60 mt-10">
                                 <Icons.ShoppingCart />
@@ -320,7 +320,7 @@
                     </div>
 
                     {/* Input Area (Fixed Bottom) */}
-                    <div class={`border-t p-3 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 transition-colors duration-300 w-full ${editingId ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
+                    <div class={`flex-shrink-0 max-h-[calc(100dvh-8rem)] overflow-y-auto overscroll-contain no-scrollbar border-t p-3 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 transition-colors duration-300 w-full ${editingId ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
                         
                         {editingId && (
                             <div class="text-xs text-amber-600 font-bold mb-1 flex justify-between">
