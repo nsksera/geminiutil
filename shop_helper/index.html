@@ -10,8 +10,6 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     
-    <!-- Babel for JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -47,560 +45,694 @@
 
     <div id="root" class="h-full w-full"></div>
 
-    <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
-
-        // SVGアイコンコンポーネント
-        const Icons = {
-            Trash2: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>,
-            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
-            Minus: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/></svg>,
-            ShoppingCart: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>,
-            RefreshCw: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>,
-            Edit: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>,
-            Edit2: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>,
-            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
-            X: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
-            ChevronDown: () => <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>,
-            ChevronUp: () => <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>,
-            Percent: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
-        };
-
-        const App = () => {
-            // --- State Management ---
-            const [budget, setBudget] = useState(3000);
-            const [isBudgetEditing, setIsBudgetEditing] = useState(false);
-            
-            // 入力フォームの状態
-            const [price, setPrice] = useState('');
-            const [taxType, setTaxType] = useState('excluded'); // 'excluded' (税抜) or 'included' (税込)
-            const [taxRate, setTaxRate] = useState(0.08); // 0.08 or 0.10
-            const [quantity, setQuantity] = useState(1);
-            const [memo, setMemo] = useState('');
-            const [discountRate, setDiscountRate] = useState(0); // 割引率 (%)
-            const priceInputRef = useRef(null);
-
-            const adjustDiscount = (amount) => {
-                setDiscountRate(current => Math.min(100, Math.max(0, current + amount)));
-            };
-            
-            const [editingId, setEditingId] = useState(null);
-            const [items, setItems] = useState([]);
-            const [reminders, setReminders] = useState([]);
-            const [isLoaded, setIsLoaded] = useState(false);
-            const [isInputExpanded, setIsInputExpanded] = useState(true);
-            const [isRemindersExpanded, setIsRemindersExpanded] = useState(true);
-            const [isReminderAdding, setIsReminderAdding] = useState(false);
-            const [reminderDraft, setReminderDraft] = useState('');
-            const [confirmingReminderId, setConfirmingReminderId] = useState(null);
-            const [activeReminderId, setActiveReminderId] = useState(null);
-
-            // --- Effects (LocalStorage) ---
-            useEffect(() => {
-                const savedData = localStorage.getItem('shopping-app-data-v1');
-                if (savedData) {
-                    try {
-                        const parsed = JSON.parse(savedData);
-                        if (parsed.budget !== undefined) setBudget(parsed.budget);
-                        if (parsed.items) setItems(parsed.items);
-                        if (parsed.reminders) setReminders(parsed.reminders);
-                    } catch (e) {
-                        console.error("データの読み込みに失敗しました", e);
-                    }
-                }
-                setIsLoaded(true);
-            }, []);
-
-            useEffect(() => {
-                if (!isLoaded) return;
-                const dataToSave = { budget, items, reminders };
-                localStorage.setItem('shopping-app-data-v1', JSON.stringify(dataToSave));
-            }, [budget, items, reminders, isLoaded]);
-
-            // --- Logic ---
-            const totalAmount = items.reduce((sum, item) => sum + item.subtotal, 0);
-            const remainingBudget = (budget || 0) - totalAmount;
-            const isOverBudget = remainingBudget < 0;
-
-            const addOrUpdateItem = () => {
-                if (!price || isNaN(price)) return;
-                const unitPrice = parseFloat(price);
-                
-                // 1. 割引計算 (予算管理用なので端数は切り上げて高めに見積もる)
-                const discountedPrice = Math.ceil(unitPrice * (1 - discountRate / 100));
-
-                let finalPricePerItem = 0;
-                if (taxType === 'excluded') {
-                    // 税抜き: 割引後価格 * (1 + 税率) -> 切り上げ
-                    finalPricePerItem = Math.ceil(discountedPrice * (1 + taxRate));
-                } else {
-                    // 税込み: 割引後価格そのもの
-                    finalPricePerItem = Math.ceil(discountedPrice);
-                }
-
-                const commonData = {
-                    memo: memo,
-                    inputPrice: unitPrice, // 元値
-                    discountRate: discountRate, // 割引率
-                    taxType: taxType,
-                    taxRate: taxType === 'excluded' ? taxRate : null,
-                    quantity: quantity,
-                    subtotal: finalPricePerItem * quantity
-                };
-
-                if (editingId) {
-                    setItems(items.map(item => 
-                        item.id === editingId ? { ...item, ...commonData } : item
-                    ));
-                    setEditingId(null);
-                } else {
-                    const newItem = {
-                        id: Date.now(),
-                        ...commonData
-                    };
-                    setItems([...items, newItem]);
-                    if (activeReminderId) {
-                        setReminders(current => current.filter(reminder => reminder.id !== activeReminderId));
-                        setActiveReminderId(null);
-                    }
-                }
-
-                // リセット
-                setPrice('');
-                setMemo('');
-                setQuantity(1);
-                setDiscountRate(0);
-                requestAnimationFrame(() => priceInputRef.current?.focus());
-            };
-
-            const startEditing = (item) => {
-                setIsInputExpanded(true);
-                setActiveReminderId(null);
-                setEditingId(item.id);
-                setPrice(item.inputPrice.toString());
-                setMemo(item.memo);
-                setTaxType(item.taxType);
-                if (item.taxRate) setTaxRate(item.taxRate);
-                setQuantity(item.quantity);
-                setDiscountRate(item.discountRate || 0);
-            };
-
-            const cancelEditing = () => {
-                setEditingId(null);
-                setPrice('');
-                setMemo('');
-                setQuantity(1);
-                setDiscountRate(0);
-            };
-
-            const addReminder = () => {
-                const text = reminderDraft.trim();
-                if (!text) return;
-                setReminders(current => [...current, { id: Date.now(), text }]);
-                setReminderDraft('');
-                setIsReminderAdding(false);
-                setIsRemindersExpanded(true);
-            };
-
-            const startReminderPurchase = (reminder) => {
-                setEditingId(null);
-                setActiveReminderId(reminder.id);
-                setMemo(reminder.text);
-                setPrice('');
-                setQuantity(1);
-                setDiscountRate(0);
-                setIsInputExpanded(true);
-                requestAnimationFrame(() => priceInputRef.current?.focus());
-            };
-
-            const cancelReminderPurchase = () => {
-                setActiveReminderId(null);
-                setPrice('');
-                setMemo('');
-                setQuantity(1);
-                setDiscountRate(0);
-            };
-
-            const requestReminderDelete = (id) => {
-                if (confirmingReminderId === id) {
-                    setReminders(current => current.filter(reminder => reminder.id !== id));
-                    if (activeReminderId === id) cancelReminderPurchase();
-                    setConfirmingReminderId(null);
-                    return;
-                }
-                setConfirmingReminderId(id);
-            };
-
-            const deleteItem = (id) => {
-                if (editingId === id) cancelEditing();
-                setItems(items.filter(item => item.id !== id));
-            };
-
-            const resetAll = () => {
-                if (window.confirm('買い物リストをすべて消去しますか？\n（予算設定は残ります）')) {
-                    setItems([]);
-                    if (activeReminderId) {
-                        cancelReminderPurchase();
-                    } else {
-                        cancelEditing();
-                    }
-                }
-            };
-
-            const fmt = (num) => num ? num.toLocaleString() : '0';
-
-            // --- Render Components ---
-            if (!isLoaded) return null;
-
-            return (
-                <div class="flex flex-col h-full bg-gray-100 max-w-md mx-auto shadow-2xl overflow-hidden relative">
-                    
-                    {/* Header */}
-                    <div class={`p-4 transition-colors duration-300 flex-shrink-0 ${isOverBudget ? 'bg-red-600' : 'bg-blue-600'} text-white shadow-md z-10`}>
-                        <div class="flex justify-between items-start mb-2">
-                            <h1 class="font-bold text-lg flex items-center gap-2">
-                                <Icons.ShoppingCart /> 
-                                {isOverBudget ? '予算オーバー！' : '買い物中'}
-                            </h1>
-                            <button onClick={resetAll} class="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded flex items-center gap-1 transition">
-                                <Icons.RefreshCw /> リセット
-                            </button>
-                        </div>
-
-                        <div class="flex justify-between items-end">
-                            <div class="flex-1">
-                                <div class="text-xs opacity-90 mb-1">現在の合計</div>
-                                <div class="text-4xl font-bold tracking-tight">¥{fmt(totalAmount)}</div>
-                            </div>
-                            
-                            <div class="text-right flex flex-col items-end">
-                                <div class="flex items-center justify-end mb-1 h-10">
-                                    <span class="text-sm opacity-90 mr-2">予算</span>
-                                    {isBudgetEditing ? (
-                                        <input 
-                                            type="number"
-                                            inputMode="numeric" 
-                                            pattern="[0-9]*"
-                                            class="w-28 text-gray-800 px-2 py-1 rounded-md text-right text-xl font-bold shadow-inner focus:outline-none focus:ring-2 focus:ring-blue-300"
-                                            value={budget}
-                                            onChange={(e) => setBudget(e.target.value === '' ? '' : parseInt(e.target.value))}
-                                            onBlur={() => { if(budget === '') setBudget(0); setIsBudgetEditing(false); }}
-                                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                                            autoFocus
-                                        />
-                                    ) : (
-                                        <button 
-                                            onClick={() => setIsBudgetEditing(true)} 
-                                            class="flex items-center gap-1 text-xl font-bold border-b-2 border-white/50 hover:bg-white/10 hover:border-white px-2 py-0.5 rounded transition-all active:scale-95 bg-white/5"
-                                        >
-                                            ¥{fmt(budget)}
-                                            <span class="opacity-70"><Icons.Edit /></span>
-                                        </button>
-                                    )}
-                                </div>
-                                <div class={`text-lg font-bold ${remainingBudget < 0 ? 'text-yellow-300' : 'text-white'}`}>
-                                    残り ¥{fmt(remainingBudget)}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* List Area */}
-                    <div class="flex-1 min-h-0 overflow-y-auto p-3 no-scrollbar space-y-2 w-full">
-                        <section class="rounded-xl border border-amber-200 bg-amber-50/80 overflow-hidden shadow-sm">
-                            <div class="flex items-center gap-2 p-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsRemindersExpanded(!isRemindersExpanded)}
-                                    class="flex-1 min-w-0 h-10 px-2 flex items-center justify-between text-left text-amber-900 font-bold rounded-lg active:bg-amber-100"
-                                    aria-expanded={isRemindersExpanded}
-                                >
-                                    <span class="truncate">買い物メモ <span class="text-sm font-normal">{reminders.length}件</span></span>
-                                    {isRemindersExpanded ? <Icons.ChevronUp /> : <Icons.ChevronDown />}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => { setIsReminderAdding(true); setIsRemindersExpanded(true); }}
-                                    class="h-10 px-3 bg-amber-200 text-amber-900 rounded-lg text-sm font-bold active:bg-amber-300 whitespace-nowrap"
-                                >
-                                    ＋ 追加
-                                </button>
-                            </div>
-
-                            {isRemindersExpanded && (
-                                <div class="border-t border-amber-200 px-2 pb-2">
-                                    {isReminderAdding && (
-                                        <div class="flex gap-2 py-2">
-                                            <input
-                                                type="text"
-                                                value={reminderDraft}
-                                                onChange={(e) => setReminderDraft(e.target.value)}
-                                                onKeyDown={(e) => { if (e.key === 'Enter') addReminder(); }}
-                                                placeholder="例：サランラップ"
-                                                aria-label="買い物メモ"
-                                                class="min-w-0 flex-1 h-11 bg-white border border-amber-300 rounded-lg px-3 text-base focus:outline-none focus:ring-2 focus:ring-amber-400"
-                                                autoFocus
-                                            />
-                                            <button type="button" onClick={addReminder} disabled={!reminderDraft.trim()} class="h-11 px-4 rounded-lg bg-amber-500 text-white font-bold disabled:bg-gray-300">登録</button>
-                                            <button type="button" onClick={() => { setIsReminderAdding(false); setReminderDraft(''); }} class="h-11 w-11 rounded-lg bg-white border border-gray-300 text-gray-500 flex items-center justify-center" aria-label="買い物メモの追加をキャンセル"><Icons.X /></button>
-                                        </div>
-                                    )}
-
-                                    {reminders.length === 0 ? (
-                                        <p class="py-2 px-2 text-sm text-amber-700/70">買い忘れそうなものをメモできます</p>
-                                    ) : (
-                                        <div class="space-y-1">
-                                            {reminders.map(reminder => (
-                                                <div key={reminder.id} class={`flex items-center gap-2 min-h-12 rounded-lg border px-2 ${activeReminderId === reminder.id ? 'bg-blue-50 border-blue-300' : 'bg-white/70 border-amber-100'}`}>
-                                                    <button type="button" onClick={() => startReminderPurchase(reminder)} class="flex-1 min-w-0 self-stretch text-left flex items-center gap-2 text-gray-500 active:text-blue-600">
-                                                        <span class="w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0"></span>
-                                                        <span class="truncate">{reminder.text}</span>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => requestReminderDelete(reminder.id)}
-                                                        class={`min-h-10 rounded-lg px-2 text-xs font-bold flex-shrink-0 transition-colors ${confirmingReminderId === reminder.id ? 'bg-red-600 text-white' : 'text-gray-400 active:bg-red-50 active:text-red-600'}`}
-                                                        aria-label={confirmingReminderId === reminder.id ? `${reminder.text}を削除しますか` : `${reminder.text}を削除`}
-                                                    >
-                                                        {confirmingReminderId === reminder.id ? '削除しますか？' : '削除'}
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </section>
-
-                        {items.length === 0 && reminders.length === 0 ? (
-                            <div class="h-full flex flex-col items-center justify-center text-gray-400 opacity-60 mt-10">
-                                <Icons.ShoppingCart />
-                                <p class="mt-2 text-sm">商品を追加してください</p>
-                            </div>
-                        ) : (
-                            items.map(item => {
-                                const isEditingThis = editingId === item.id;
-                                return (
-                                    <div key={item.id} class={`bg-white p-3 rounded-lg shadow-sm border flex justify-between items-center animate-[fadeIn_0.2s_ease-out] transition-colors ${isEditingThis ? 'border-blue-400 ring-1 ring-blue-100 bg-blue-50' : 'border-gray-100'}`}>
-                                        <div class="flex-1 min-w-0">
-                                            {/* メイン: 金額表示 */}
-                                            <div class="flex items-baseline gap-2">
-                                                <span class="font-bold text-xl text-gray-800">¥{fmt(item.subtotal)}</span>
-                                                <span class="text-xs text-gray-400">(税込)</span>
-                                            </div>
-
-                                            {/* サブ: 詳細内訳表示 */}
-                                            <div class="text-xs text-gray-500 mt-1 leading-relaxed">
-                                                <div class="flex flex-wrap items-center gap-x-1">
-                                                    {/* 単価 */}
-                                                    <span>@{fmt(item.inputPrice)}</span>
-                                                    
-                                                    {/* 割引表示 */}
-                                                    {item.discountRate > 0 && (
-                                                        <span class="text-red-500 font-bold bg-red-50 px-1 rounded">
-                                                            -{item.discountRate}%
-                                                        </span>
-                                                    )}
-
-                                                    {/* 税表示 */}
-                                                    {item.taxType === 'excluded' ? (
-                                                        <span>
-                                                            <span class="text-gray-400">+</span>
-                                                            <span class="bg-gray-100 px-1 rounded text-gray-600">税{Math.round(item.taxRate*100)}%</span>
-                                                        </span>
-                                                    ) : (
-                                                        <span class="bg-gray-100 px-1 rounded text-gray-600">税込</span>
-                                                    )}
-
-                                                    {/* 個数 */}
-                                                    <span class="text-gray-400">×</span>
-                                                    <span class="font-bold text-gray-700">{item.quantity}</span>
-                                                </div>
-
-                                                {/* メモ */}
-                                                {item.memo && (
-                                                    <div class="text-gray-600 truncate mt-0.5 pl-0.5 border-l-2 border-gray-200">
-                                                        {item.memo}
-                                                    </div>
-                                                )}
-                                                {isEditingThis && <div class="text-blue-600 font-bold mt-0.5">編集中</div>}
-                                            </div>
-                                        </div>
-
-                                        <div class="flex gap-1 flex-shrink-0 ml-2 self-start mt-1">
-                                            <button onClick={() => startEditing(item)} class={`p-2 transition-colors active:scale-95 rounded-full ${isEditingThis ? 'text-blue-600 bg-blue-100' : 'text-gray-400 hover:text-blue-500 hover:bg-gray-50'}`}>
-                                                <Icons.Edit2 />
-                                            </button>
-                                            <button onClick={() => deleteItem(item.id)} class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors active:scale-95">
-                                                <Icons.Trash2 />
-                                            </button>
-                                        </div>
-                                    </div>
-                                );
-                            }).reverse()
-                        )}
-                        <div class="h-10"></div>
-                    </div>
-
-                    {/* Input Area (Fixed Bottom) */}
-                    <div class={`flex-shrink-0 max-h-[calc(100dvh-8rem)] overflow-y-auto overscroll-contain no-scrollbar border-t p-3 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 transition-colors duration-300 w-full ${editingId ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
-                        <button
-                            type="button"
-                            onClick={() => setIsInputExpanded(!isInputExpanded)}
-                            class={`w-full min-h-11 flex items-center justify-between rounded-xl px-3 font-bold transition-colors ${isInputExpanded ? 'mb-3 bg-gray-100 text-gray-600' : 'bg-blue-600 text-white'}`}
-                            aria-expanded={isInputExpanded}
-                            aria-label={isInputExpanded ? '入力欄を最小化' : '入力欄を開く'}
-                        >
-                            <span class="flex items-center gap-2 min-w-0">
-                                <span>{isInputExpanded ? '入力欄を隠す' : '入力欄を開く'}</span>
-                                {!isInputExpanded && (price || memo) && (
-                                    <span class="truncate text-xs font-normal opacity-90">
-                                        {price ? `¥${Number(price).toLocaleString()}` : ''}{price && memo ? '・' : ''}{memo}
-                                    </span>
-                                )}
-                            </span>
-                            <span class="flex-shrink-0">{isInputExpanded ? <Icons.ChevronDown /> : <Icons.ChevronUp />}</span>
-                        </button>
-
-                        {isInputExpanded && (
-                        <>
-
-                        {activeReminderId && (
-                            <div class="mb-3 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-700 flex items-center justify-between gap-2">
-                                <span class="truncate">買い物メモから入力中</span>
-                                <button type="button" onClick={cancelReminderPurchase} class="font-bold underline flex-shrink-0">キャンセル</button>
-                            </div>
-                        )}
-                        
-                        {editingId && (
-                            <div class="text-xs text-amber-600 font-bold mb-1 flex justify-between">
-                                <span>修正モード</span>
-                                <button onClick={cancelEditing} class="underline">キャンセル</button>
-                            </div>
-                        )}
-
-                        {/* メモは任意項目として主要操作より上に配置 */}
-                        <div class="mb-3">
-                            <label class="block text-xs font-bold text-gray-500 mb-1" htmlFor="item-memo">商品名など</label>
-                            <input
-                                id="item-memo"
-                                type="text"
-                                placeholder="商品名など"
-                                class="w-full h-12 bg-white border border-gray-300 rounded-xl px-4 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                value={memo} onChange={(e) => setMemo(e.target.value)}
-                            />
-                        </div>
-
-                        {/* Row 2: 割引設定 */}
-                        <div class="mb-3">
-                            <div class="flex items-center justify-between mb-1.5">
-                                <span class="text-xs font-bold text-gray-500 flex items-center gap-0.5">
-                                    <Icons.Percent />割引率
-                                </span>
-                                <span class={`text-sm font-bold ${discountRate > 0 ? 'text-red-500' : 'text-gray-400'}`}>
-                                    {discountRate}%
-                                </span>
-                            </div>
-                            <div class="grid grid-cols-[3rem_repeat(3,minmax(0,1fr))] gap-1.5">
-                                <button
-                                    type="button"
-                                    onClick={() => setDiscountRate(0)}
-                                    aria-label="割引率を0%にリセット"
-                                    class={`h-12 rounded-xl border text-base font-bold transition-colors
-                                        ${discountRate === 0 ? 'bg-gray-700 text-white border-gray-700' : 'bg-white text-gray-600 border-gray-300'}`}
-                                >
-                                    0
-                                </button>
-                                {[1, 5, 10].map(step => (
-                                    <div key={step} class="grid grid-cols-[2.25rem_1fr_2.25rem] h-12 overflow-hidden rounded-xl border border-gray-300 bg-white">
-                                        <button
-                                            type="button"
-                                            onClick={() => adjustDiscount(-step)}
-                                            disabled={discountRate === 0}
-                                            aria-label={`割引率を${step}%減らす`}
-                                            class="text-xl font-bold text-gray-600 active:bg-gray-100 disabled:text-gray-300"
-                                        >
-                                            −
-                                        </button>
-                                        <span class="flex items-center justify-center border-x border-gray-200 text-xs font-bold text-gray-700 whitespace-nowrap">
-                                            {step}%
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={() => adjustDiscount(step)}
-                                            disabled={discountRate === 100}
-                                            aria-label={`割引率を${step}%増やす`}
-                                            class="text-xl font-bold text-red-500 active:bg-red-50 disabled:text-gray-300"
-                                        >
-                                            ＋
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* 税設定 */}
-                        <div class="flex gap-2 h-12 mb-3">
-                            <div class="flex bg-gray-100 rounded-xl p-1 flex-1">
-                                <button onClick={() => setTaxType('excluded')} class={`flex-1 text-sm rounded-lg font-bold transition-all ${taxType === 'excluded' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>税抜</button>
-                                <button onClick={() => setTaxType('included')} class={`flex-1 text-sm rounded-lg font-bold transition-all ${taxType === 'included' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>税込</button>
-                            </div>
-                            <div class={`flex bg-gray-100 rounded-xl p-1 flex-1 transition-opacity ${taxType === 'included' ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
-                                <button onClick={() => setTaxRate(0.08)} class={`flex-1 text-sm rounded-lg font-bold transition-all ${taxRate === 0.08 ? 'bg-white shadow text-green-600' : 'text-gray-500'}`}>8%</button>
-                                <button onClick={() => setTaxRate(0.10)} class={`flex-1 text-sm rounded-lg font-bold transition-all ${taxRate === 0.10 ? 'bg-white shadow text-green-600' : 'text-gray-500'}`}>10%</button>
-                            </div>
-                        </div>
-
-                        {/* 個数 */}
-                        <div class="flex items-center bg-gray-100 rounded-xl h-14 mb-3 justify-between">
-                                <button aria-label="個数を減らす" class="h-14 w-14 flex items-center justify-center text-gray-600 active:text-blue-600 active:scale-90 transition" onClick={() => setQuantity(Math.max(1, quantity - 1))}><Icons.Minus /></button>
-                                <span class="font-bold text-xl text-center">個数&nbsp;&nbsp;{quantity}</span>
-                                <button aria-label="個数を増やす" class="h-14 w-14 flex items-center justify-center text-gray-600 active:text-blue-600 active:scale-90 transition" onClick={() => setQuantity(quantity + 1)}><Icons.Plus /></button>
-                        </div>
-
-                        {/* 金額は追加ボタンの直上に配置 */}
-                        <div class="mb-3">
-                            <label class="block text-xs font-bold text-gray-500 mb-1" htmlFor="item-price">金額</label>
-                            <div class="relative">
-                                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-xl font-bold">¥</span>
-                                <input
-                                    id="item-price"
-                                    ref={priceInputRef}
-                                    type="number" inputMode="numeric" pattern="[0-9]*" placeholder="0"
-                                    class="w-full h-16 bg-white border-2 border-gray-300 rounded-xl pl-11 pr-4 text-right text-2xl font-bold focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                                    value={price}
-                                    onChange={(e) => setPrice(e.target.value)}
-                                    onFocus={(e) => e.target.select()}
-                                    onKeyDown={(e) => { if (e.key === 'Enter' && price) addOrUpdateItem(); }}
-                                />
-                            </div>
-                        </div>
-
-                        {editingId ? (
-                            <div class="flex gap-2 h-14">
-                                <button onClick={cancelEditing} class="w-14 bg-gray-200 hover:bg-gray-300 rounded-xl text-gray-600 flex items-center justify-center shadow-sm active:scale-95 transition-all" aria-label="編集をキャンセル"><Icons.X /></button>
-                                <button onClick={addOrUpdateItem} class="flex-1 rounded-xl text-lg font-bold text-white flex items-center justify-center shadow-sm active:scale-95 transition-all bg-green-600 hover:bg-green-700 shadow-green-200">更新する</button>
-                            </div>
-                        ) : (
-                            <button onClick={addOrUpdateItem} disabled={!price} class={`w-full h-14 rounded-xl text-lg font-bold text-white flex items-center justify-center shadow-sm active:scale-95 transition-all ${!price ? 'bg-gray-300' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}`}>追加する</button>
-                        )}
-                        </>
-                        )}
-                    </div>
-
-                    <style>{`
+    <script>
+const {
+  useState,
+  useEffect,
+  useRef
+} = React;
+const Icons = {
+  Trash2: () => React.createElement("svg", {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: "20",
+    height: "20",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }, React.createElement("path", {
+    d: "M3 6h18"
+  }), React.createElement("path", {
+    d: "M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"
+  }), React.createElement("path", {
+    d: "M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
+  }), React.createElement("line", {
+    x1: "10",
+    x2: "10",
+    y1: "11",
+    y2: "17"
+  }), React.createElement("line", {
+    x1: "14",
+    x2: "14",
+    y1: "11",
+    y2: "17"
+  })),
+  Plus: () => React.createElement("svg", {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: "20",
+    height: "20",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }, React.createElement("path", {
+    d: "M5 12h14"
+  }), React.createElement("path", {
+    d: "M12 5v14"
+  })),
+  Minus: () => React.createElement("svg", {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: "20",
+    height: "20",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }, React.createElement("path", {
+    d: "M5 12h14"
+  })),
+  ShoppingCart: () => React.createElement("svg", {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: "24",
+    height: "24",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }, React.createElement("circle", {
+    cx: "8",
+    cy: "21",
+    r: "1"
+  }), React.createElement("circle", {
+    cx: "19",
+    cy: "21",
+    r: "1"
+  }), React.createElement("path", {
+    d: "M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"
+  })),
+  RefreshCw: () => React.createElement("svg", {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: "20",
+    height: "20",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }, React.createElement("path", {
+    d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"
+  }), React.createElement("path", {
+    d: "M21 3v5h-5"
+  }), React.createElement("path", {
+    d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"
+  }), React.createElement("path", {
+    d: "M3 21v-5h5"
+  })),
+  Edit: () => React.createElement("svg", {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: "16",
+    height: "16",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }, React.createElement("path", {
+    d: "M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"
+  })),
+  Edit2: () => React.createElement("svg", {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: "20",
+    height: "20",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }, React.createElement("path", {
+    d: "M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"
+  })),
+  Check: () => React.createElement("svg", {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: "24",
+    height: "24",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }, React.createElement("polyline", {
+    points: "20 6 9 17 4 12"
+  })),
+  X: () => React.createElement("svg", {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: "24",
+    height: "24",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }, React.createElement("line", {
+    x1: "18",
+    y1: "6",
+    x2: "6",
+    y2: "18"
+  }), React.createElement("line", {
+    x1: "6",
+    y1: "6",
+    x2: "18",
+    y2: "18"
+  })),
+  ChevronDown: () => React.createElement("svg", {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: "22",
+    height: "22",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2.5",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }, React.createElement("path", {
+    d: "m6 9 6 6 6-6"
+  })),
+  ChevronUp: () => React.createElement("svg", {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: "22",
+    height: "22",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2.5",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }, React.createElement("path", {
+    d: "m18 15-6-6-6 6"
+  })),
+  Percent: () => React.createElement("svg", {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: "16",
+    height: "16",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }, React.createElement("line", {
+    x1: "19",
+    y1: "5",
+    x2: "5",
+    y2: "19"
+  }), React.createElement("circle", {
+    cx: "6.5",
+    cy: "6.5",
+    r: "2.5"
+  }), React.createElement("circle", {
+    cx: "17.5",
+    cy: "17.5",
+    r: "2.5"
+  }))
+};
+const App = () => {
+  const [budget, setBudget] = useState(3000);
+  const [isBudgetEditing, setIsBudgetEditing] = useState(false);
+  const [price, setPrice] = useState('');
+  const [taxType, setTaxType] = useState('excluded');
+  const [taxRate, setTaxRate] = useState(0.08);
+  const [quantity, setQuantity] = useState(1);
+  const [memo, setMemo] = useState('');
+  const [discountRate, setDiscountRate] = useState(0);
+  const priceInputRef = useRef(null);
+  const adjustDiscount = amount => {
+    setDiscountRate(current => Math.min(100, Math.max(0, current + amount)));
+  };
+  const [editingId, setEditingId] = useState(null);
+  const [items, setItems] = useState([]);
+  const [reminders, setReminders] = useState([]);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [isInputExpanded, setIsInputExpanded] = useState(true);
+  const [isRemindersExpanded, setIsRemindersExpanded] = useState(true);
+  const [isReminderAdding, setIsReminderAdding] = useState(false);
+  const [reminderDraft, setReminderDraft] = useState('');
+  const [confirmingReminderId, setConfirmingReminderId] = useState(null);
+  const [activeReminderId, setActiveReminderId] = useState(null);
+  useEffect(() => {
+    const savedData = localStorage.getItem('shopping-app-data-v1');
+    if (savedData) {
+      try {
+        const parsed = JSON.parse(savedData);
+        if (parsed.budget !== undefined) setBudget(parsed.budget);
+        if (parsed.items) setItems(parsed.items);
+        if (parsed.reminders) setReminders(parsed.reminders);
+      } catch (e) {
+        console.error("データの読み込みに失敗しました", e);
+      }
+    }
+    setIsLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!isLoaded) return;
+    const dataToSave = {
+      budget,
+      items,
+      reminders
+    };
+    localStorage.setItem('shopping-app-data-v1', JSON.stringify(dataToSave));
+  }, [budget, items, reminders, isLoaded]);
+  const totalAmount = items.reduce((sum, item) => sum + item.subtotal, 0);
+  const remainingBudget = (budget || 0) - totalAmount;
+  const isOverBudget = remainingBudget < 0;
+  const addOrUpdateItem = () => {
+    if (!price || isNaN(price)) return;
+    const unitPrice = parseFloat(price);
+    const discountedPrice = Math.ceil(unitPrice * (1 - discountRate / 100));
+    let finalPricePerItem = 0;
+    if (taxType === 'excluded') {
+      finalPricePerItem = Math.ceil(discountedPrice * (1 + taxRate));
+    } else {
+      finalPricePerItem = Math.ceil(discountedPrice);
+    }
+    const commonData = {
+      memo: memo,
+      inputPrice: unitPrice,
+      discountRate: discountRate,
+      taxType: taxType,
+      taxRate: taxType === 'excluded' ? taxRate : null,
+      quantity: quantity,
+      subtotal: finalPricePerItem * quantity
+    };
+    if (editingId) {
+      setItems(items.map(item => item.id === editingId ? {
+        ...item,
+        ...commonData
+      } : item));
+      setEditingId(null);
+    } else {
+      const newItem = {
+        id: Date.now(),
+        ...commonData
+      };
+      setItems([...items, newItem]);
+      if (activeReminderId) {
+        setReminders(current => current.filter(reminder => reminder.id !== activeReminderId));
+        setActiveReminderId(null);
+      }
+    }
+    setPrice('');
+    setMemo('');
+    setQuantity(1);
+    setDiscountRate(0);
+    requestAnimationFrame(() => priceInputRef.current?.focus());
+  };
+  const startEditing = item => {
+    setIsInputExpanded(true);
+    setActiveReminderId(null);
+    setEditingId(item.id);
+    setPrice(item.inputPrice.toString());
+    setMemo(item.memo);
+    setTaxType(item.taxType);
+    if (item.taxRate) setTaxRate(item.taxRate);
+    setQuantity(item.quantity);
+    setDiscountRate(item.discountRate || 0);
+  };
+  const cancelEditing = () => {
+    setEditingId(null);
+    setPrice('');
+    setMemo('');
+    setQuantity(1);
+    setDiscountRate(0);
+  };
+  const addReminder = () => {
+    const text = reminderDraft.trim();
+    if (!text) return;
+    setReminders(current => [...current, {
+      id: Date.now(),
+      text
+    }]);
+    setReminderDraft('');
+    setIsReminderAdding(false);
+    setIsRemindersExpanded(true);
+  };
+  const startReminderPurchase = reminder => {
+    setEditingId(null);
+    setActiveReminderId(reminder.id);
+    setMemo(reminder.text);
+    setPrice('');
+    setQuantity(1);
+    setDiscountRate(0);
+    setIsInputExpanded(true);
+    requestAnimationFrame(() => priceInputRef.current?.focus());
+  };
+  const cancelReminderPurchase = () => {
+    setActiveReminderId(null);
+    setPrice('');
+    setMemo('');
+    setQuantity(1);
+    setDiscountRate(0);
+  };
+  const requestReminderDelete = id => {
+    if (confirmingReminderId === id) {
+      setReminders(current => current.filter(reminder => reminder.id !== id));
+      if (activeReminderId === id) cancelReminderPurchase();
+      setConfirmingReminderId(null);
+      return;
+    }
+    setConfirmingReminderId(id);
+  };
+  const deleteItem = id => {
+    if (editingId === id) cancelEditing();
+    setItems(items.filter(item => item.id !== id));
+  };
+  const resetAll = () => {
+    if (window.confirm('買い物リストをすべて消去しますか？\n（予算設定は残ります）')) {
+      setItems([]);
+      if (activeReminderId) {
+        cancelReminderPurchase();
+      } else {
+        cancelEditing();
+      }
+    }
+  };
+  const fmt = num => num ? num.toLocaleString() : '0';
+  if (!isLoaded) return null;
+  return React.createElement("div", {
+    className: "flex flex-col h-full bg-gray-100 max-w-md mx-auto shadow-2xl overflow-hidden relative"
+  }, React.createElement("div", {
+    className: `p-4 transition-colors duration-300 flex-shrink-0 ${isOverBudget ? 'bg-red-600' : 'bg-blue-600'} text-white shadow-md z-10`
+  }, React.createElement("div", {
+    className: "flex justify-between items-start mb-2"
+  }, React.createElement("h1", {
+    className: "font-bold text-lg flex items-center gap-2"
+  }, React.createElement(Icons.ShoppingCart, null), isOverBudget ? '予算オーバー！' : '買い物中'), React.createElement("button", {
+    onClick: resetAll,
+    className: "text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded flex items-center gap-1 transition"
+  }, React.createElement(Icons.RefreshCw, null), " リセット")), React.createElement("div", {
+    className: "flex justify-between items-end"
+  }, React.createElement("div", {
+    className: "flex-1"
+  }, React.createElement("div", {
+    className: "text-xs opacity-90 mb-1"
+  }, "現在の合計"), React.createElement("div", {
+    className: "text-4xl font-bold tracking-tight"
+  }, "¥", fmt(totalAmount))), React.createElement("div", {
+    className: "text-right flex flex-col items-end"
+  }, React.createElement("div", {
+    className: "flex items-center justify-end mb-1 h-10"
+  }, React.createElement("span", {
+    className: "text-sm opacity-90 mr-2"
+  }, "予算"), isBudgetEditing ? React.createElement("input", {
+    type: "number",
+    inputMode: "numeric",
+    pattern: "[0-9]*",
+    className: "w-28 text-gray-800 px-2 py-1 rounded-md text-right text-xl font-bold shadow-inner focus:outline-none focus:ring-2 focus:ring-blue-300",
+    value: budget,
+    onChange: e => setBudget(e.target.value === '' ? '' : parseInt(e.target.value)),
+    onBlur: () => {
+      if (budget === '') setBudget(0);
+      setIsBudgetEditing(false);
+    },
+    onKeyDown: e => {
+      if (e.key === 'Enter') e.target.blur();
+    },
+    autoFocus: true
+  }) : React.createElement("button", {
+    onClick: () => setIsBudgetEditing(true),
+    className: "flex items-center gap-1 text-xl font-bold border-b-2 border-white/50 hover:bg-white/10 hover:border-white px-2 py-0.5 rounded transition-all active:scale-95 bg-white/5"
+  }, "¥", fmt(budget), React.createElement("span", {
+    className: "opacity-70"
+  }, React.createElement(Icons.Edit, null)))), React.createElement("div", {
+    className: `text-lg font-bold ${remainingBudget < 0 ? 'text-yellow-300' : 'text-white'}`
+  }, "残り ¥", fmt(remainingBudget))))), React.createElement("div", {
+    className: "flex-1 min-h-0 overflow-y-auto p-3 no-scrollbar space-y-2 w-full"
+  }, React.createElement("section", {
+    className: "rounded-xl border border-amber-200 bg-amber-50/80 overflow-hidden shadow-sm"
+  }, React.createElement("div", {
+    className: "flex items-center gap-2 p-2"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: () => setIsRemindersExpanded(!isRemindersExpanded),
+    className: "flex-1 min-w-0 h-10 px-2 flex items-center justify-between text-left text-amber-900 font-bold rounded-lg active:bg-amber-100",
+    "aria-expanded": isRemindersExpanded
+  }, React.createElement("span", {
+    className: "truncate"
+  }, "買い物メモ ", React.createElement("span", {
+    className: "text-sm font-normal"
+  }, reminders.length, "件")), isRemindersExpanded ? React.createElement(Icons.ChevronUp, null) : React.createElement(Icons.ChevronDown, null)), React.createElement("button", {
+    type: "button",
+    onClick: () => {
+      setIsReminderAdding(true);
+      setIsRemindersExpanded(true);
+    },
+    className: "h-10 px-3 bg-amber-200 text-amber-900 rounded-lg text-sm font-bold active:bg-amber-300 whitespace-nowrap"
+  }, "＋ 追加")), isRemindersExpanded && React.createElement("div", {
+    className: "border-t border-amber-200 px-2 pb-2"
+  }, isReminderAdding && React.createElement("div", {
+    className: "flex gap-2 py-2"
+  }, React.createElement("input", {
+    type: "text",
+    value: reminderDraft,
+    onChange: e => setReminderDraft(e.target.value),
+    onKeyDown: e => {
+      if (e.key === 'Enter') addReminder();
+    },
+    placeholder: "例：サランラップ",
+    "aria-label": "買い物メモ",
+    className: "min-w-0 flex-1 h-11 bg-white border border-amber-300 rounded-lg px-3 text-base focus:outline-none focus:ring-2 focus:ring-amber-400",
+    autoFocus: true
+  }), React.createElement("button", {
+    type: "button",
+    onClick: addReminder,
+    disabled: !reminderDraft.trim(),
+    className: "h-11 px-4 rounded-lg bg-amber-500 text-white font-bold disabled:bg-gray-300"
+  }, "登録"), React.createElement("button", {
+    type: "button",
+    onClick: () => {
+      setIsReminderAdding(false);
+      setReminderDraft('');
+    },
+    className: "h-11 w-11 rounded-lg bg-white border border-gray-300 text-gray-500 flex items-center justify-center",
+    "aria-label": "買い物メモの追加をキャンセル"
+  }, React.createElement(Icons.X, null))), reminders.length === 0 ? React.createElement("p", {
+    className: "py-2 px-2 text-sm text-amber-700/70"
+  }, "買い忘れそうなものをメモできます") : React.createElement("div", {
+    className: "space-y-1"
+  }, reminders.map(reminder => React.createElement("div", {
+    key: reminder.id,
+    className: `flex items-center gap-2 min-h-12 rounded-lg border px-2 ${activeReminderId === reminder.id ? 'bg-blue-50 border-blue-300' : 'bg-white/70 border-amber-100'}`
+  }, React.createElement("button", {
+    type: "button",
+    onClick: () => startReminderPurchase(reminder),
+    className: "flex-1 min-w-0 self-stretch text-left flex items-center gap-2 text-gray-500 active:text-blue-600"
+  }, React.createElement("span", {
+    className: "w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0"
+  }), React.createElement("span", {
+    className: "truncate"
+  }, reminder.text)), React.createElement("button", {
+    type: "button",
+    onClick: () => requestReminderDelete(reminder.id),
+    className: `min-h-10 rounded-lg px-2 text-xs font-bold flex-shrink-0 transition-colors ${confirmingReminderId === reminder.id ? 'bg-red-600 text-white' : 'text-gray-400 active:bg-red-50 active:text-red-600'}`,
+    "aria-label": confirmingReminderId === reminder.id ? `${reminder.text}を削除しますか` : `${reminder.text}を削除`
+  }, confirmingReminderId === reminder.id ? '削除しますか？' : '削除')))))), items.length === 0 && reminders.length === 0 ? React.createElement("div", {
+    className: "h-full flex flex-col items-center justify-center text-gray-400 opacity-60 mt-10"
+  }, React.createElement(Icons.ShoppingCart, null), React.createElement("p", {
+    className: "mt-2 text-sm"
+  }, "商品を追加してください")) : items.map(item => {
+    const isEditingThis = editingId === item.id;
+    return React.createElement("div", {
+      key: item.id,
+      className: `bg-white p-3 rounded-lg shadow-sm border flex justify-between items-center animate-[fadeIn_0.2s_ease-out] transition-colors ${isEditingThis ? 'border-blue-400 ring-1 ring-blue-100 bg-blue-50' : 'border-gray-100'}`
+    }, React.createElement("div", {
+      className: "flex-1 min-w-0"
+    }, React.createElement("div", {
+      className: "flex items-baseline gap-2"
+    }, React.createElement("span", {
+      className: "font-bold text-xl text-gray-800"
+    }, "¥", fmt(item.subtotal)), React.createElement("span", {
+      className: "text-xs text-gray-400"
+    }, "(税込)")), React.createElement("div", {
+      className: "text-xs text-gray-500 mt-1 leading-relaxed"
+    }, React.createElement("div", {
+      className: "flex flex-wrap items-center gap-x-1"
+    }, React.createElement("span", null, "@", fmt(item.inputPrice)), item.discountRate > 0 && React.createElement("span", {
+      className: "text-red-500 font-bold bg-red-50 px-1 rounded"
+    }, "-", item.discountRate, "%"), item.taxType === 'excluded' ? React.createElement("span", null, React.createElement("span", {
+      className: "text-gray-400"
+    }, "+"), React.createElement("span", {
+      className: "bg-gray-100 px-1 rounded text-gray-600"
+    }, "税", Math.round(item.taxRate * 100), "%")) : React.createElement("span", {
+      className: "bg-gray-100 px-1 rounded text-gray-600"
+    }, "税込"), React.createElement("span", {
+      className: "text-gray-400"
+    }, "×"), React.createElement("span", {
+      className: "font-bold text-gray-700"
+    }, item.quantity)), item.memo && React.createElement("div", {
+      className: "text-gray-600 truncate mt-0.5 pl-0.5 border-l-2 border-gray-200"
+    }, item.memo), isEditingThis && React.createElement("div", {
+      className: "text-blue-600 font-bold mt-0.5"
+    }, "編集中"))), React.createElement("div", {
+      className: "flex gap-1 flex-shrink-0 ml-2 self-start mt-1"
+    }, React.createElement("button", {
+      onClick: () => startEditing(item),
+      className: `p-2 transition-colors active:scale-95 rounded-full ${isEditingThis ? 'text-blue-600 bg-blue-100' : 'text-gray-400 hover:text-blue-500 hover:bg-gray-50'}`
+    }, React.createElement(Icons.Edit2, null)), React.createElement("button", {
+      onClick: () => deleteItem(item.id),
+      className: "p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors active:scale-95"
+    }, React.createElement(Icons.Trash2, null))));
+  }).reverse(), React.createElement("div", {
+    className: "h-10"
+  })), React.createElement("div", {
+    className: `flex-shrink-0 max-h-[calc(100dvh-8rem)] overflow-y-auto overscroll-contain no-scrollbar border-t p-3 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 transition-colors duration-300 w-full ${editingId ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`
+  }, React.createElement("button", {
+    type: "button",
+    onClick: () => setIsInputExpanded(!isInputExpanded),
+    className: `w-full min-h-11 flex items-center justify-between rounded-xl px-3 font-bold transition-colors ${isInputExpanded ? 'mb-3 bg-gray-100 text-gray-600' : 'bg-blue-600 text-white'}`,
+    "aria-expanded": isInputExpanded,
+    "aria-label": isInputExpanded ? '入力欄を最小化' : '入力欄を開く'
+  }, React.createElement("span", {
+    className: "flex items-center gap-2 min-w-0"
+  }, React.createElement("span", null, isInputExpanded ? '入力欄を隠す' : '入力欄を開く'), !isInputExpanded && (price || memo) && React.createElement("span", {
+    className: "truncate text-xs font-normal opacity-90"
+  }, price ? `¥${Number(price).toLocaleString()}` : '', price && memo ? '・' : '', memo)), React.createElement("span", {
+    className: "flex-shrink-0"
+  }, isInputExpanded ? React.createElement(Icons.ChevronDown, null) : React.createElement(Icons.ChevronUp, null))), isInputExpanded && React.createElement(React.Fragment, null, activeReminderId && React.createElement("div", {
+    className: "mb-3 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-700 flex items-center justify-between gap-2"
+  }, React.createElement("span", {
+    className: "truncate"
+  }, "買い物メモから入力中"), React.createElement("button", {
+    type: "button",
+    onClick: cancelReminderPurchase,
+    className: "font-bold underline flex-shrink-0"
+  }, "キャンセル")), editingId && React.createElement("div", {
+    className: "text-xs text-amber-600 font-bold mb-1 flex justify-between"
+  }, React.createElement("span", null, "修正モード"), React.createElement("button", {
+    onClick: cancelEditing,
+    className: "underline"
+  }, "キャンセル")), React.createElement("div", {
+    className: "mb-3"
+  }, React.createElement("label", {
+    className: "block text-xs font-bold text-gray-500 mb-1",
+    htmlFor: "item-memo"
+  }, "商品名など"), React.createElement("input", {
+    id: "item-memo",
+    type: "text",
+    placeholder: "商品名など",
+    className: "w-full h-12 bg-white border border-gray-300 rounded-xl px-4 text-base focus:outline-none focus:ring-2 focus:ring-blue-500",
+    value: memo,
+    onChange: e => setMemo(e.target.value)
+  })), React.createElement("div", {
+    className: "mb-3"
+  }, React.createElement("div", {
+    className: "flex items-center justify-between mb-1.5"
+  }, React.createElement("span", {
+    className: "text-xs font-bold text-gray-500 flex items-center gap-0.5"
+  }, React.createElement(Icons.Percent, null), "割引率"), React.createElement("span", {
+    className: `text-sm font-bold ${discountRate > 0 ? 'text-red-500' : 'text-gray-400'}`
+  }, discountRate, "%")), React.createElement("div", {
+    className: "grid grid-cols-[3rem_repeat(3,minmax(0,1fr))] gap-1.5"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: () => setDiscountRate(0),
+    "aria-label": "割引率を0%にリセット",
+    className: `h-12 rounded-xl border text-base font-bold transition-colors
+                                        ${discountRate === 0 ? 'bg-gray-700 text-white border-gray-700' : 'bg-white text-gray-600 border-gray-300'}`
+  }, "0"), [1, 5, 10].map(step => React.createElement("div", {
+    key: step,
+    className: "grid grid-cols-[2.25rem_1fr_2.25rem] h-12 overflow-hidden rounded-xl border border-gray-300 bg-white"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: () => adjustDiscount(-step),
+    disabled: discountRate === 0,
+    "aria-label": `割引率を${step}%減らす`,
+    className: "text-xl font-bold text-gray-600 active:bg-gray-100 disabled:text-gray-300"
+  }, "−"), React.createElement("span", {
+    className: "flex items-center justify-center border-x border-gray-200 text-xs font-bold text-gray-700 whitespace-nowrap"
+  }, step, "%"), React.createElement("button", {
+    type: "button",
+    onClick: () => adjustDiscount(step),
+    disabled: discountRate === 100,
+    "aria-label": `割引率を${step}%増やす`,
+    className: "text-xl font-bold text-red-500 active:bg-red-50 disabled:text-gray-300"
+  }, "＋"))))), React.createElement("div", {
+    className: "flex gap-2 h-12 mb-3"
+  }, React.createElement("div", {
+    className: "flex bg-gray-100 rounded-xl p-1 flex-1"
+  }, React.createElement("button", {
+    onClick: () => setTaxType('excluded'),
+    className: `flex-1 text-sm rounded-lg font-bold transition-all ${taxType === 'excluded' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`
+  }, "税抜"), React.createElement("button", {
+    onClick: () => setTaxType('included'),
+    className: `flex-1 text-sm rounded-lg font-bold transition-all ${taxType === 'included' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`
+  }, "税込")), React.createElement("div", {
+    className: `flex bg-gray-100 rounded-xl p-1 flex-1 transition-opacity ${taxType === 'included' ? 'opacity-30 pointer-events-none' : 'opacity-100'}`
+  }, React.createElement("button", {
+    onClick: () => setTaxRate(0.08),
+    className: `flex-1 text-sm rounded-lg font-bold transition-all ${taxRate === 0.08 ? 'bg-white shadow text-green-600' : 'text-gray-500'}`
+  }, "8%"), React.createElement("button", {
+    onClick: () => setTaxRate(0.10),
+    className: `flex-1 text-sm rounded-lg font-bold transition-all ${taxRate === 0.10 ? 'bg-white shadow text-green-600' : 'text-gray-500'}`
+  }, "10%"))), React.createElement("div", {
+    className: "flex items-center bg-gray-100 rounded-xl h-14 mb-3 justify-between"
+  }, React.createElement("button", {
+    "aria-label": "個数を減らす",
+    className: "h-14 w-14 flex items-center justify-center text-gray-600 active:text-blue-600 active:scale-90 transition",
+    onClick: () => setQuantity(Math.max(1, quantity - 1))
+  }, React.createElement(Icons.Minus, null)), React.createElement("span", {
+    className: "font-bold text-xl text-center"
+  }, "個数\xA0\xA0", quantity), React.createElement("button", {
+    "aria-label": "個数を増やす",
+    className: "h-14 w-14 flex items-center justify-center text-gray-600 active:text-blue-600 active:scale-90 transition",
+    onClick: () => setQuantity(quantity + 1)
+  }, React.createElement(Icons.Plus, null))), React.createElement("div", {
+    className: "mb-3"
+  }, React.createElement("label", {
+    className: "block text-xs font-bold text-gray-500 mb-1",
+    htmlFor: "item-price"
+  }, "金額"), React.createElement("div", {
+    className: "relative"
+  }, React.createElement("span", {
+    className: "absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-xl font-bold"
+  }, "¥"), React.createElement("input", {
+    id: "item-price",
+    ref: priceInputRef,
+    type: "number",
+    inputMode: "numeric",
+    pattern: "[0-9]*",
+    placeholder: "0",
+    className: "w-full h-16 bg-white border-2 border-gray-300 rounded-xl pl-11 pr-4 text-right text-2xl font-bold focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200",
+    value: price,
+    onChange: e => setPrice(e.target.value),
+    onFocus: e => e.target.select(),
+    onKeyDown: e => {
+      if (e.key === 'Enter' && price) addOrUpdateItem();
+    }
+  }))), editingId ? React.createElement("div", {
+    className: "flex gap-2 h-14"
+  }, React.createElement("button", {
+    onClick: cancelEditing,
+    className: "w-14 bg-gray-200 hover:bg-gray-300 rounded-xl text-gray-600 flex items-center justify-center shadow-sm active:scale-95 transition-all",
+    "aria-label": "編集をキャンセル"
+  }, React.createElement(Icons.X, null)), React.createElement("button", {
+    onClick: addOrUpdateItem,
+    className: "flex-1 rounded-xl text-lg font-bold text-white flex items-center justify-center shadow-sm active:scale-95 transition-all bg-green-600 hover:bg-green-700 shadow-green-200"
+  }, "更新する")) : React.createElement("button", {
+    onClick: addOrUpdateItem,
+    disabled: !price,
+    className: `w-full h-14 rounded-xl text-lg font-bold text-white flex items-center justify-center shadow-sm active:scale-95 transition-all ${!price ? 'bg-gray-300' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}`
+  }, "追加する"))), React.createElement("style", null, `
                         @keyframes fadeIn {
                             from { opacity: 0; transform: translateY(10px); }
                             to { opacity: 1; transform: translateY(0); }
                         }
                         .pb-safe { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
-                    `}</style>
-                </div>
-            );
-        };
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+                    `));
+};
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App, null));
     </script>
 </body>
 </html>
