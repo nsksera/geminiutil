@@ -1,0 +1,1255 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MP4 Loop Viewer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #050607;
+      --panel: #111418;
+      --panel-2: #171b20;
+      --line: #303741;
+      --line-strong: #6aa6ff;
+      --text: #f3f5f7;
+      --muted: #a6afb9;
+      --danger: #ff7777;
+      --ok: #88d498;
+      --shadow: 0 18px 48px rgba(0, 0, 0, .35);
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      letter-spacing: 0;
+    }
+
+    body {
+      overflow: hidden;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #202832;
+      color: var(--text);
+      min-height: 36px;
+      padding: 0 14px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      border-color: #7a8798;
+      background: #27313d;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: .45;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
+      min-height: 100vh;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,.035), transparent 36%),
+        var(--bg);
+    }
+
+    .sidebar {
+      height: 100vh;
+      overflow: auto;
+      border-right: 1px solid var(--line);
+      background: rgba(11, 14, 18, .96);
+      padding: 18px;
+    }
+
+    .stage {
+      position: relative;
+      min-width: 0;
+      height: 100vh;
+      display: block;
+      overflow: hidden;
+      background: #000;
+    }
+
+    .stage:fullscreen {
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .video-wrap {
+      position: absolute;
+      inset: 0;
+      min-height: 0;
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(255,255,255,.04), transparent 50%),
+        #000;
+    }
+
+    video#player {
+      width: auto;
+      height: auto;
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+
+    .empty-state {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      text-align: center;
+      padding: 24px;
+      pointer-events: none;
+    }
+
+    .empty-state strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--text);
+      font-size: 22px;
+      font-weight: 650;
+    }
+
+    .overlay {
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: 14px;
+      display: grid;
+      gap: 10px;
+      opacity: 1;
+      transition: opacity .18s ease;
+      pointer-events: auto;
+    }
+
+    .overlay.hidden,
+    .overlay.idle {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .nowbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 9px 12px;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 8px;
+      background: rgba(8, 10, 13, .72);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    .nowbar .main {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 14px;
+    }
+
+    .nowbar .sub {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .overlay-cards {
+      display: grid;
+      grid-template-columns: repeat(9, minmax(92px, 1fr));
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-size: 22px;
+      line-height: 1.2;
+      font-weight: 700;
+    }
+
+    .lead {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .section {
+      display: grid;
+      gap: 10px;
+      padding: 14px 0;
+      border-top: 1px solid rgba(255,255,255,.08);
+    }
+
+    .section:first-of-type {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      text-transform: uppercase;
+    }
+
+    .file-input {
+      width: 100%;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 12px;
+      color: var(--muted);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .hidden-input {
+      position: fixed;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .status {
+      min-height: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .status.error {
+      color: var(--danger);
+    }
+
+    .file-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .file-row {
+      display: grid;
+      grid-template-columns: 30px 68px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 78px;
+      padding: 6px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .num {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: #252d36;
+      color: var(--text);
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .file-meta {
+      min-width: 0;
+    }
+
+    .file-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 14px;
+    }
+
+    .file-note {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .remove-file {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      min-height: 32px;
+      padding: 0;
+      border-radius: 6px;
+      color: #ffc2c2;
+      background: #2a1719;
+      border-color: #5d2b31;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .remove-file:hover {
+      color: #fff;
+      background: #492126;
+      border-color: #a64c57;
+    }
+
+    .thumb {
+      width: 68px;
+      height: 68px;
+      object-fit: cover;
+      border-radius: 6px;
+      background: #222;
+      border: 1px solid rgba(255,255,255,.12);
+      flex: 0 0 auto;
+    }
+
+    .thumb-fallback {
+      display: grid;
+      place-items: center;
+      width: 68px;
+      height: 68px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: #1d2229;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+      padding: 5px;
+      overflow: hidden;
+    }
+
+    .loop-editors {
+      display: grid;
+      gap: 7px;
+    }
+
+    .loop-edit-row {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+    }
+
+    .loop-edit-row label {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .loop-edit-row input {
+      width: 100%;
+      height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #080a0d;
+      color: var(--text);
+      padding: 0 10px;
+    }
+
+    .loop-edit-row input:focus {
+      outline: 2px solid rgba(106,166,255,.28);
+      border-color: var(--line-strong);
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .loop-card {
+      position: relative;
+      display: grid;
+      grid-template-columns: 68px minmax(0, 1fr);
+      gap: 9px;
+      min-height: 86px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+      cursor: pointer;
+      text-align: left;
+      overflow: hidden;
+    }
+
+    .loop-card:hover {
+      border-color: #778390;
+      background: var(--panel-2);
+    }
+
+    .loop-card.active {
+      border-color: var(--line-strong);
+      background: #142133;
+      box-shadow: 0 0 0 1px rgba(106,166,255,.2) inset;
+    }
+
+    .loop-card.disabled {
+      opacity: .42;
+      cursor: not-allowed;
+    }
+
+    .loop-card.compact {
+      grid-template-columns: 48px minmax(0, 1fr);
+      min-height: 70px;
+      padding: 7px;
+      background: rgba(13, 16, 21, .82);
+      backdrop-filter: blur(10px);
+    }
+
+    .loop-card.compact .thumb,
+    .loop-card.compact .thumb-fallback,
+    .loop-card.compact .thumb-stack {
+      width: 48px;
+      height: 48px;
+    }
+
+    .loop-card.compact .mini-thumb {
+      width: 32px;
+      height: 32px;
+    }
+
+    .thumb-stack {
+      position: relative;
+      width: 68px;
+      height: 68px;
+      overflow: hidden;
+      border-radius: 6px;
+      background: #171b20;
+    }
+
+    .mini-thumb {
+      position: absolute;
+      width: 45px;
+      height: 45px;
+      object-fit: cover;
+      border-radius: 5px;
+      border: 1px solid rgba(255,255,255,.18);
+      background: #222;
+      box-shadow: 0 5px 14px rgba(0,0,0,.35);
+    }
+
+    .mini-fallback {
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .mini-thumb:nth-child(1) { left: 0; top: 0; z-index: 4; }
+    .mini-thumb:nth-child(2) { left: 12px; top: 8px; z-index: 3; }
+    .mini-thumb:nth-child(3) { left: 23px; top: 16px; z-index: 2; }
+    .mini-thumb:nth-child(4) { left: 8px; top: 25px; z-index: 1; }
+
+    .loop-info {
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+      align-content: center;
+    }
+
+    .loop-key {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .loop-spec {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .loop-steps {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .loop-state {
+      color: var(--ok);
+      font-size: 12px;
+    }
+
+    .disabled .loop-state {
+      color: var(--danger);
+    }
+
+    .drop-target {
+      outline: 2px solid var(--line-strong);
+      outline-offset: -8px;
+    }
+
+    @media (max-width: 1100px) {
+      .app {
+        grid-template-columns: 360px minmax(0, 1fr);
+      }
+
+      .overlay-cards {
+        grid-template-columns: repeat(5, minmax(92px, 1fr));
+      }
+    }
+
+    @media (max-width: 820px) {
+      body {
+        overflow: auto;
+      }
+
+      .app {
+        display: block;
+      }
+
+      .sidebar {
+        height: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .stage {
+        height: 70vh;
+      }
+
+      .cards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .overlay-cards {
+        grid-template-columns: repeat(3, minmax(92px, 1fr));
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app" id="app">
+    <aside class="sidebar">
+      <h1>MP4 Loop Viewer</h1>
+      <p class="lead">MP4を選び、数字キー1から9に割り当てたループ単位をテンキーまたはカードで切り替えます。</p>
+
+      <section class="section">
+        <div class="section-title">Files</div>
+        <input id="appendInput" class="hidden-input" type="file" multiple accept="video/mp4,video/*" aria-hidden="true" tabindex="-1">
+        <input id="fileInput" class="file-input" type="file" multiple accept="video/mp4,video/*">
+        <div class="actions">
+          <button id="appendButton" type="button">追加読込</button>
+          <button id="clearFilesButton" type="button">全登録解除</button>
+          <button id="fullscreenButton" type="button">フルスクリーン</button>
+          <button id="restartButton" type="button">先頭から再生</button>
+          <button id="toggleUiButton" type="button">UI表示切替</button>
+        </div>
+        <div id="status" class="status">MP4ファイルを選択してください。ドラッグ&ドロップでも追加できます。</div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">Selected Videos</div>
+        <ul id="fileList" class="file-list"></ul>
+      </section>
+
+      <section class="section">
+        <div class="section-title">Loop Units</div>
+        <div id="loopEditors" class="loop-editors"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">Loop Cards</div>
+        <div id="cards" class="cards"></div>
+      </section>
+    </aside>
+
+    <section class="stage" id="stage">
+      <div class="video-wrap">
+        <video id="player" playsinline preload="metadata"></video>
+        <div id="emptyState" class="empty-state">
+          <div>
+            <strong>再生待機中</strong>
+            <span>ファイルを選択して、ループカードまたは数字キーで開始します。</span>
+          </div>
+        </div>
+        <div id="overlay" class="overlay">
+          <div class="nowbar">
+            <div class="main" id="nowPlaying">現在再生中: なし</div>
+            <div class="sub" id="nowLoop">ループ: なし</div>
+          </div>
+          <div id="overlayCards" class="overlay-cards"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const STORAGE_KEY = "mp4LoopViewer.v1";
+      const DEFAULT_LOOPS = {
+        1: "1",
+        2: "234",
+        3: "24",
+        4: "1112",
+        5: "",
+        6: "",
+        7: "",
+        8: "",
+        9: ""
+      };
+
+      const state = {
+        files: [],
+        loops: { ...DEFAULT_LOOPS },
+        activeLoop: null,
+        stepIndex: 0,
+        uiVisible: true,
+        overlayIdle: false,
+        idleTimer: null
+      };
+
+      const els = {
+        app: document.getElementById("app"),
+        stage: document.getElementById("stage"),
+        player: document.getElementById("player"),
+        fileInput: document.getElementById("fileInput"),
+        appendInput: document.getElementById("appendInput"),
+        fileList: document.getElementById("fileList"),
+        loopEditors: document.getElementById("loopEditors"),
+        cards: document.getElementById("cards"),
+        overlayCards: document.getElementById("overlayCards"),
+        appendButton: document.getElementById("appendButton"),
+        clearFilesButton: document.getElementById("clearFilesButton"),
+        fullscreenButton: document.getElementById("fullscreenButton"),
+        restartButton: document.getElementById("restartButton"),
+        toggleUiButton: document.getElementById("toggleUiButton"),
+        status: document.getElementById("status"),
+        nowPlaying: document.getElementById("nowPlaying"),
+        nowLoop: document.getElementById("nowLoop"),
+        overlay: document.getElementById("overlay"),
+        emptyState: document.getElementById("emptyState")
+      };
+
+      function loadSettings() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+          if (saved && typeof saved === "object") {
+            state.loops = { ...DEFAULT_LOOPS, ...(saved.loops || {}) };
+            state.uiVisible = saved.uiVisible !== false;
+            if (Number.isInteger(saved.activeLoop) && saved.activeLoop >= 1 && saved.activeLoop <= 9) {
+              state.activeLoop = saved.activeLoop;
+            }
+          }
+        } catch (error) {
+          console.warn("Failed to load settings", error);
+        }
+      }
+
+      function saveSettings() {
+        const payload = {
+          loops: state.loops,
+          uiVisible: state.uiVisible,
+          activeLoop: state.activeLoop
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      }
+
+      function setStatus(message, isError = false) {
+        els.status.textContent = message;
+        els.status.classList.toggle("error", isError);
+      }
+
+      function parseLoop(key) {
+        const raw = String(state.loops[key] || "");
+        const steps = [];
+        for (const char of raw) {
+          const index = Number(char);
+          if (index >= 1 && index <= state.files.length) {
+            steps.push(index);
+          }
+        }
+        return { raw, steps };
+      }
+
+      function getCurrentFile() {
+        if (!state.activeLoop) return null;
+        const { steps } = parseLoop(state.activeLoop);
+        if (state.stepIndex >= steps.length) {
+          state.stepIndex = 0;
+        }
+        const videoNumber = steps[state.stepIndex];
+        return state.files[videoNumber - 1] || null;
+      }
+
+      function revokeFiles() {
+        for (const item of state.files) {
+          URL.revokeObjectURL(item.url);
+        }
+      }
+
+      function createFileItems(fileList, startIndex) {
+        return Array.from(fileList)
+          .filter(file => file.type.startsWith("video/") || /\.mp4$/i.test(file.name))
+          .map((file, index) => ({
+          file,
+          index: startIndex + index,
+          name: file.name,
+          url: URL.createObjectURL(file),
+          thumb: "",
+          thumbError: false,
+          loadError: ""
+        }));
+      }
+
+      function renumberFiles() {
+        state.files.forEach((item, index) => {
+          item.index = index + 1;
+        });
+      }
+
+      function resetPlayback() {
+        state.stepIndex = 0;
+        els.player.removeAttribute("src");
+        resetPlayerSizing();
+        els.player.load();
+        els.emptyState.style.display = "";
+      }
+
+      function acceptFiles(fileList, mode = "replace") {
+        const slots = Math.max(0, 99 - (mode === "append" ? state.files.length : 0));
+        const nextItems = createFileItems(fileList, mode === "append" ? state.files.length + 1 : 1).slice(0, slots);
+
+        if (mode === "replace") {
+          revokeFiles();
+          state.files = nextItems;
+          resetPlayback();
+        } else if (nextItems.length) {
+          state.files = state.files.concat(nextItems);
+          renumberFiles();
+        }
+
+        if (state.files.length === 0) {
+          setStatus("動画ファイルが選択されていません。", true);
+        } else if (mode === "append") {
+          setStatus(nextItems.length ? `${nextItems.length}個の動画を追加しました。` : "追加できる動画ファイルがありませんでした。", nextItems.length === 0);
+          generateThumbnails(nextItems);
+        } else {
+          setStatus(`${state.files.length}個の動画を読み込みました。`);
+          generateThumbnails(state.files);
+        }
+        render();
+      }
+
+      function removeFile(fileIndex) {
+        const current = getCurrentFile();
+        const removed = state.files[fileIndex];
+        if (!removed) return;
+
+        URL.revokeObjectURL(removed.url);
+        state.files.splice(fileIndex, 1);
+        renumberFiles();
+
+        if (!state.files.length) {
+          state.activeLoop = null;
+          saveSettings();
+          resetPlayback();
+          setStatus("すべての動画登録を解除しました。");
+        } else if (current && current.url === removed.url) {
+          resetPlayback();
+          if (state.activeLoop && parseLoop(state.activeLoop).steps.length) {
+            playCurrent(true);
+          }
+          setStatus(`${removed.name} の登録を解除しました。`);
+        } else {
+          setStatus(`${removed.name} の登録を解除しました。`);
+        }
+        render();
+      }
+
+      function clearFiles() {
+        if (!state.files.length) {
+          setStatus("解除する動画登録がありません。", true);
+          return;
+        }
+        revokeFiles();
+        state.files = [];
+        state.activeLoop = null;
+        state.stepIndex = 0;
+        saveSettings();
+        resetPlayback();
+        setStatus("すべての動画登録を解除しました。");
+        render();
+      }
+
+      async function generateThumbnails(items) {
+        for (const item of items) {
+          if (!state.files.includes(item)) continue;
+          try {
+            item.thumb = await createThumbnail(item);
+          } catch (error) {
+            item.thumbError = true;
+            console.warn("Thumbnail failed", item.name, error);
+          }
+          render();
+        }
+      }
+
+      function createThumbnail(item) {
+        return new Promise((resolve, reject) => {
+          const video = document.createElement("video");
+          const canvas = document.createElement("canvas");
+          const timeout = window.setTimeout(() => cleanup(() => reject(new Error("timeout"))), 7000);
+
+          video.muted = true;
+          video.playsInline = true;
+          video.preload = "metadata";
+          video.src = item.url;
+
+          function cleanup(done) {
+            window.clearTimeout(timeout);
+            video.onloadedmetadata = null;
+            video.onloadeddata = null;
+            video.onseeked = null;
+            video.onerror = null;
+            done();
+          }
+
+          video.onerror = () => cleanup(() => reject(new Error("load error")));
+          video.onloadedmetadata = () => {
+            const target = Number.isFinite(video.duration) && video.duration > .15 ? .1 : 0;
+            if (target === 0 && video.readyState >= 2) {
+              draw();
+              return;
+            }
+            try {
+              if (target > 0) {
+                video.currentTime = target;
+              }
+            } catch (error) {
+              draw();
+            }
+          };
+          video.onloadeddata = () => {
+            if (video.currentTime === 0) {
+              draw();
+            }
+          };
+          video.onseeked = draw;
+
+          function draw() {
+            cleanup(() => {
+              const width = video.videoWidth || 160;
+              const height = video.videoHeight || 90;
+              canvas.width = 136;
+              canvas.height = 136;
+              const ctx = canvas.getContext("2d");
+              ctx.fillStyle = "#111";
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              const scale = Math.max(canvas.width / width, canvas.height / height);
+              const drawWidth = width * scale;
+              const drawHeight = height * scale;
+              const x = (canvas.width - drawWidth) / 2;
+              const y = (canvas.height - drawHeight) / 2;
+              ctx.drawImage(video, x, y, drawWidth, drawHeight);
+              resolve(canvas.toDataURL("image/jpeg", .82));
+            });
+          }
+        });
+      }
+
+      function startLoop(key, restart = true) {
+        const numericKey = Number(key);
+        if (!state.files.length) {
+          setStatus("先にMP4ファイルを選択してください。", true);
+          return;
+        }
+        const parsed = parseLoop(numericKey);
+        if (!parsed.steps.length) {
+          setStatus(`キー${numericKey}のループ単位に有効な動画番号がありません。`, true);
+          return;
+        }
+        state.activeLoop = numericKey;
+        state.stepIndex = 0;
+        saveSettings();
+        render();
+        playCurrent(restart);
+      }
+
+      async function playCurrent(restart = true) {
+        const item = getCurrentFile();
+        if (!item) {
+          setStatus("再生できる動画がありません。", true);
+          render();
+          return;
+        }
+
+        els.emptyState.style.display = "none";
+        if (els.player.src !== item.url) {
+          els.player.src = item.url;
+          resetPlayerSizing();
+        }
+        els.player.loop = false;
+        if (restart) {
+          try {
+            els.player.currentTime = 0;
+          } catch (error) {
+            console.warn("Could not reset currentTime", error);
+          }
+        }
+        try {
+          await els.player.play();
+          setStatus(`キー${state.activeLoop}を再生中。`);
+        } catch (error) {
+          setStatus("再生を開始できませんでした。カードまたはボタンをもう一度操作してください。", true);
+        }
+        render();
+      }
+
+      function updatePlayerFit() {
+        const videoWidth = els.player.videoWidth;
+        const videoHeight = els.player.videoHeight;
+        const bounds = els.player.parentElement.getBoundingClientRect();
+        const boxWidth = Math.floor(bounds.width);
+        const boxHeight = Math.floor(bounds.height);
+        if (!videoWidth || !videoHeight || !boxWidth || !boxHeight) return;
+
+        const scale = Math.min(boxWidth / videoWidth, boxHeight / videoHeight);
+        const displayWidth = Math.floor(videoWidth * scale);
+        const displayHeight = Math.floor(videoHeight * scale);
+
+        els.player.style.aspectRatio = `${videoWidth} / ${videoHeight}`;
+        els.player.style.width = `${displayWidth}px`;
+        els.player.style.height = `${displayHeight}px`;
+      }
+
+      function resetPlayerSizing() {
+        els.player.style.removeProperty("width");
+        els.player.style.removeProperty("height");
+        els.player.style.removeProperty("aspect-ratio");
+      }
+
+      function schedulePlayerFit() {
+        updatePlayerFit();
+        requestAnimationFrame(updatePlayerFit);
+        window.setTimeout(updatePlayerFit, 80);
+      }
+
+      function playNextStep() {
+        if (!state.activeLoop) return;
+        const { steps } = parseLoop(state.activeLoop);
+        if (!steps.length) return;
+        state.stepIndex = (state.stepIndex + 1) % steps.length;
+        playCurrent(true);
+      }
+
+      function restartActiveLoop() {
+        if (state.activeLoop) {
+          startLoop(state.activeLoop, true);
+        } else {
+          setStatus("再生し直すループ単位を選択してください。", true);
+        }
+      }
+
+      function updateLoop(key, value) {
+        state.loops[key] = value.replace(/[^\d]/g, "").slice(0, 48);
+        saveSettings();
+        renderCards();
+        renderNow();
+      }
+
+      function requestFullscreen() {
+        const target = els.stage;
+        if (!document.fullscreenElement && target.requestFullscreen) {
+          target.requestFullscreen().catch(() => setStatus("フルスクリーンを開始できませんでした。", true));
+        }
+      }
+
+      function exitFullscreen() {
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+
+      function toggleUi() {
+        state.uiVisible = !state.uiVisible;
+        saveSettings();
+        render();
+      }
+
+      function resetOverlayIdle() {
+        state.overlayIdle = false;
+        window.clearTimeout(state.idleTimer);
+        state.idleTimer = window.setTimeout(() => {
+          if (document.fullscreenElement) {
+            state.overlayIdle = true;
+            renderOverlayVisibility();
+          }
+        }, 2600);
+        renderOverlayVisibility();
+      }
+
+      function renderOverlayVisibility() {
+        els.overlay.classList.toggle("hidden", !state.uiVisible);
+        els.overlay.classList.toggle("idle", state.overlayIdle && state.uiVisible);
+      }
+
+      function render() {
+        renderFiles();
+        renderEditors();
+        renderCards();
+        renderNow();
+        renderOverlayVisibility();
+      }
+
+      function renderFiles() {
+        if (!state.files.length) {
+          els.fileList.innerHTML = '<li class="status">未選択</li>';
+          return;
+        }
+        els.fileList.innerHTML = state.files.map(item => `
+          <li class="file-row">
+            <span class="num">${item.index}</span>
+            ${renderThumb(item, "thumb")}
+            <div class="file-meta">
+              <div class="file-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
+              <div class="file-note">${item.thumbError ? "サムネイル生成失敗" : "video " + item.index}</div>
+            </div>
+            <button type="button" class="remove-file" data-index="${item.index - 1}" title="登録解除" aria-label="${escapeHtml(item.name)} の登録解除">×</button>
+          </li>
+        `).join("");
+        els.fileList.querySelectorAll(".remove-file").forEach(button => {
+          button.addEventListener("click", () => removeFile(Number(button.dataset.index)));
+        });
+      }
+
+      function renderEditors() {
+        els.loopEditors.innerHTML = "";
+        for (let key = 1; key <= 9; key++) {
+          const row = document.createElement("div");
+          row.className = "loop-edit-row";
+          row.innerHTML = `
+            <label for="loop-${key}">キー${key}</label>
+            <input id="loop-${key}" inputmode="numeric" autocomplete="off" value="${escapeHtml(state.loops[key] || "")}" aria-label="キー${key}のループ単位">
+          `;
+          const input = row.querySelector("input");
+          input.addEventListener("input", () => updateLoop(key, input.value));
+          els.loopEditors.appendChild(row);
+        }
+      }
+
+      function renderCards() {
+        const html = Array.from({ length: 9 }, (_, index) => renderLoopCard(index + 1, false)).join("");
+        const compactHtml = Array.from({ length: 9 }, (_, index) => renderLoopCard(index + 1, true)).join("");
+        els.cards.innerHTML = html;
+        els.overlayCards.innerHTML = compactHtml;
+        bindCardClicks(els.cards);
+        bindCardClicks(els.overlayCards);
+      }
+
+      function bindCardClicks(root) {
+        root.querySelectorAll(".loop-card").forEach(card => {
+          card.addEventListener("click", () => {
+            if (!card.classList.contains("disabled")) {
+              startLoop(Number(card.dataset.key), true);
+            }
+          });
+        });
+      }
+
+      function renderLoopCard(key, compact) {
+        const { raw, steps } = parseLoop(key);
+        const active = state.activeLoop === key;
+        const disabled = steps.length === 0;
+        const stepLabel = steps.length ? steps.join(" / ") : "有効な動画なし";
+        const status = steps.length ? `${steps.length} steps` : "無効";
+        const classes = ["loop-card", compact ? "compact" : "", active ? "active" : "", disabled ? "disabled" : ""].filter(Boolean).join(" ");
+        return `
+          <button type="button" class="${classes}" data-key="${key}" ${disabled ? "disabled" : ""}>
+            ${renderLoopThumbs(steps)}
+            <span class="loop-info">
+              <span class="loop-key">キー${key}</span>
+              <span class="loop-spec" title="${escapeHtml(raw || "(空)") }">${escapeHtml(raw || "(空)")}</span>
+              <span class="loop-steps" title="${escapeHtml(stepLabel)}">${escapeHtml(stepLabel)}</span>
+              <span class="loop-state">${status}</span>
+            </span>
+          </button>
+        `;
+      }
+
+      function renderLoopThumbs(steps) {
+        if (!steps.length) {
+          return '<span class="thumb-fallback">no<br>loop</span>';
+        }
+        if (steps.length === 1) {
+          return renderThumb(state.files[steps[0] - 1], "thumb");
+        }
+        const visible = steps.slice(0, 4);
+        return `
+          <span class="thumb-stack">
+            ${visible.map(step => renderMiniThumb(state.files[step - 1], step)).join("")}
+          </span>
+        `;
+      }
+
+      function renderThumb(item, className) {
+        if (item && item.thumb) {
+          return `<img class="${className}" src="${item.thumb}" alt="${escapeHtml(item.index + ': ' + item.name)}">`;
+        }
+        const label = item ? `${item.index}<br>${escapeHtml(shortName(item.name))}` : "no<br>file";
+        return `<span class="thumb-fallback">${label}</span>`;
+      }
+
+      function renderMiniThumb(item, step) {
+        if (item && item.thumb) {
+          return `<img class="mini-thumb" src="${item.thumb}" alt="動画${step}">`;
+        }
+        return `<span class="mini-thumb mini-fallback">${step}</span>`;
+      }
+
+      function renderNow() {
+        const item = getCurrentFile();
+        if (!item) {
+          els.nowPlaying.textContent = "現在再生中: なし";
+          els.nowLoop.textContent = state.activeLoop ? `ループ: キー${state.activeLoop}` : "ループ: なし";
+          return;
+        }
+        const { raw, steps } = parseLoop(state.activeLoop);
+        const videoNumber = steps[state.stepIndex];
+        els.nowPlaying.textContent = `現在再生中: ${videoNumber}: ${item.name}`;
+        els.nowLoop.textContent = `ループ: キー${state.activeLoop} (${raw}) step ${state.stepIndex + 1}/${steps.length}`;
+      }
+
+      function getKeyNumber(event) {
+        if (/^Digit[1-9]$/.test(event.code)) return Number(event.code.replace("Digit", ""));
+        if (/^Numpad[1-9]$/.test(event.code)) return Number(event.code.replace("Numpad", ""));
+        if (/^[1-9]$/.test(event.key)) return Number(event.key);
+        return null;
+      }
+
+      function isEditingText(event) {
+        const tag = event.target && event.target.tagName;
+        return tag === "INPUT" || tag === "TEXTAREA" || event.target.isContentEditable;
+      }
+
+      function onKeyDown(event) {
+        const number = getKeyNumber(event);
+        const editing = isEditingText(event);
+        if (number && (!editing || document.fullscreenElement)) {
+          event.preventDefault();
+          startLoop(number, true);
+          return;
+        }
+
+        if (editing && !document.fullscreenElement) return;
+
+        if (event.key === "Enter") {
+          event.preventDefault();
+          requestFullscreen();
+        } else if (event.key === "Escape") {
+          exitFullscreen();
+        } else if (event.key.toLowerCase() === "h") {
+          event.preventDefault();
+          toggleUi();
+        } else if (event.key.toLowerCase() === "r" || event.key === "0" || event.code === "Numpad0" || event.code === "Digit0") {
+          event.preventDefault();
+          restartActiveLoop();
+        }
+      }
+
+      function shortName(name) {
+        return name.length > 10 ? name.slice(0, 8) + "..." : name;
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function setupEvents() {
+        els.fileInput.addEventListener("change", event => {
+          acceptFiles(event.target.files, "replace");
+          event.target.value = "";
+        });
+        els.appendInput.addEventListener("change", event => {
+          acceptFiles(event.target.files, "append");
+          event.target.value = "";
+        });
+        els.appendButton.addEventListener("click", () => els.appendInput.click());
+        els.clearFilesButton.addEventListener("click", clearFiles);
+        els.fullscreenButton.addEventListener("click", requestFullscreen);
+        els.restartButton.addEventListener("click", restartActiveLoop);
+        els.toggleUiButton.addEventListener("click", toggleUi);
+        els.player.addEventListener("loadedmetadata", schedulePlayerFit);
+        els.player.addEventListener("ended", playNextStep);
+        els.player.addEventListener("error", () => {
+          const item = getCurrentFile();
+          if (item) {
+            item.loadError = "読み込み失敗";
+            setStatus(`${item.name} を読み込めませんでした。`, true);
+          }
+        });
+        document.addEventListener("keydown", onKeyDown);
+        document.addEventListener("fullscreenchange", () => {
+          resetOverlayIdle();
+          schedulePlayerFit();
+        });
+        window.addEventListener("resize", schedulePlayerFit);
+        els.stage.addEventListener("mousemove", resetOverlayIdle);
+        els.stage.addEventListener("click", resetOverlayIdle);
+
+        document.addEventListener("dragover", event => {
+          event.preventDefault();
+          els.app.classList.add("drop-target");
+        });
+        document.addEventListener("dragleave", () => els.app.classList.remove("drop-target"));
+        document.addEventListener("drop", event => {
+          event.preventDefault();
+          els.app.classList.remove("drop-target");
+          if (event.dataTransfer && event.dataTransfer.files.length) {
+            acceptFiles(event.dataTransfer.files, state.files.length ? "append" : "replace");
+          }
+        });
+
+        window.addEventListener("beforeunload", revokeFiles);
+      }
+
+      loadSettings();
+      setupEvents();
+      render();
+      resetOverlayIdle();
+    })();
+  </script>
+</body>
+</html>
