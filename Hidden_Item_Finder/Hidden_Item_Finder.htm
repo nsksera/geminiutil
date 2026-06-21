@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hidden Item Finder (Canvas Edition)</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel (for JSX) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        body {
+            background-color: #f3f4f6;
+            touch-action: manipulation;
+        }
+        canvas {
+            touch-action: none;
+            image-rendering: high-quality;
+        }
+        .control-panel {
+            scrollbar-width: thin;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+        // --- Constants ---
+        const GAP = 2;
+        
+        // --- Components ---
+
+        const ItemShapePreview = ({ item, onFound, onUndoFound }) => {
+            const width = Math.max(1, item.w);
+            const height = Math.max(1, item.h);
+            const initialCount = item.initialCount ?? item.count;
+
+            return (
+                <div className="flex items-center gap-3" title={`${width}×${height}、${item.count}個`}>
+                    <div
+                        className="grid gap-0.5 shrink-0"
+                        style={{ gridTemplateColumns: `repeat(${width}, 0.75rem)` }}
+                        aria-label={`${width}×${height}マス`}
+                    >
+                        {Array.from({ length: width * height }, (_, index) => (
+                            <span key={index} className="block w-3 h-3 bg-slate-700 rounded-[1px]" />
+                        ))}
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <button
+                            type="button"
+                            onClick={onFound}
+                            disabled={item.count === 0}
+                            className="w-6 h-6 rounded bg-blue-100 text-blue-700 font-bold hover:bg-blue-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                            aria-label={`${width}×${height}のアイテムを1個発見`}
+                            title="1個発見"
+                        >−</button>
+                        <span className="min-w-9 text-center font-mono text-sm font-bold text-gray-700 whitespace-nowrap">×{item.count}</span>
+                        <button
+                            type="button"
+                            onClick={onUndoFound}
+                            disabled={item.count >= initialCount}
+                            className="w-6 h-6 rounded bg-gray-200 text-gray-700 font-bold hover:bg-gray-300 disabled:opacity-30 disabled:cursor-not-allowed"
+                            aria-label={`${width}×${height}の発見を1個取り消す`}
+                            title="発見を取り消す"
+                        >＋</button>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            // Stage Settings
+            const [gridSize, setGridSize] = useState({ x: 10, y: 10 });
+            const [tileSize, setTileSize] = useState(40); // Dynamic Tile Size
+            const [items, setItems] = useState([
+                { id: 1, w: 1, h: 4, count: 2, initialCount: 2 },
+                { id: 2, w: 2, h: 3, count: 1, initialCount: 1 }
+            ]);
+            
+            // Grid State (0: Unknown/Tile, 1: Open/Empty)
+            const [gridState, setGridState] = useState([]); 
+            
+            // Analysis State
+            const [isAnalysisActive, setIsAnalysisActive] = useState(false);
+            const [heatmap, setHeatmap] = useState([]);
+
+            // Image State
+            const [bgImage, setBgImage] = useState(null); 
+            const [bgConfig, setBgConfig] = useState({ x: 0, y: 0, scale: 0.5 });
+            const [isPeekingBg, setIsPeekingBg] = useState(false);
+
+            const [fgImage, setFgImage] = useState(null);
+            const [fgConfig, setFgConfig] = useState({ x: 0, y: 0, scale: 1.0 });
+            const [isPeekingFg, setIsPeekingFg] = useState(false);
+
+            // Inputs for Item Form
+            const [newItem, setNewItem] = useState({ w: 1, h: 4, count: 1 });
+
+            // Modal State
+            const [modalConfig, setModalConfig] = useState(null);
+
+            // Ref for sizing
+            const stageRef = useRef(null);
+
+            // Initialize Grid & Size
+            useEffect(() => {
+                // Wait for layout to settle slightly
+                setTimeout(() => {
+                    handleGridResize();
+                }, 100);
+                
+                // Add resize listener to adjust tile size on window resize
+                const handleResize = () => {
+                   recalcTileSize(gridSize.x, gridSize.y);
+                };
+                window.addEventListener('resize', handleResize);
+                return () => window.removeEventListener('resize', handleResize);
+            }, []);
+
+            const resetGrid = (w, h) => {
+                const total = w * h;
+                setGridState(new Array(total).fill(0));
+                setHeatmap(new Array(total).fill(0));
+            };
+
+            const recalcTileSize = (x, y) => {
+                if (!stageRef.current) return;
+                
+                const containerW = stageRef.current.clientWidth - 32; // padding buffer
+                // For height, we want to fit within reasonable view, e.g., 70% of viewport height
+                // But on mobile, we might just care about width.
+                // Let's set a constraint for max height to avoid scrolling too much on PC.
+                const containerH = window.innerHeight * 0.7; 
+
+                // Calculate max possible size based on Width
+                // Width = x * s + (x-1) * gap
+                const maxW = (containerW - (x - 1) * GAP) / x;
+                
+                // Calculate max possible size based on Height
+                const maxH = (containerH - (y - 1) * GAP) / y;
+
+                // Take the smaller of the two to fit in both dimensions
+                let size = Math.floor(Math.min(maxW, maxH));
+
+                // Constraints
+                size = Math.min(size, 80); // Max cap
+                size = Math.max(size, 15); // Min floor for usability
+                
+                setTileSize(size);
+            };
+
+            const handleGridResize = () => {
+                const x = parseInt(document.getElementById('gridX').value) || 10;
+                const y = parseInt(document.getElementById('gridY').value) || 10;
+                setGridSize({ x, y });
+                resetGrid(x, y);
+                recalcTileSize(x, y);
+            };
+
+            // --- Clear Functions ---
+            const requestClearGridState = () => {
+                setModalConfig({
+                    message: '盤面の調査状況をリセットしますか？',
+                    type: 'normal',
+                    onConfirm: () => {
+                        setGridState(new Array(gridSize.x * gridSize.y).fill(0));
+                        setHeatmap(new Array(gridSize.x * gridSize.y).fill(0));
+                    }
+                });
+            };
+
+            const requestClearItems = () => {
+                setModalConfig({
+                    message: 'アイテムリストを空にしますか？',
+                    type: 'normal',
+                    onConfirm: () => {
+                        setItems([]);
+                        setHeatmap(new Array(gridSize.x * gridSize.y).fill(0));
+                    }
+                });
+            };
+
+            const requestClearAll = () => {
+                setModalConfig({
+                    message: '全ての設定を初期化しますか？',
+                    type: 'danger',
+                    onConfirm: () => {
+                        setGridSize({ x: 10, y: 10 });
+                        setItems([]);
+                        setGridState(new Array(100).fill(0));
+                        setHeatmap(new Array(100).fill(0));
+                        setBgImage(null);
+                        setFgImage(null);
+                        setBgConfig({ x: 0, y: 0, scale: 0.5 });
+                        setFgConfig({ x: 0, y: 0, scale: 1.0 });
+                        setIsAnalysisActive(false);
+                        recalcTileSize(10, 10);
+                    }
+                });
+            };
+
+            // --- Analysis Logic ---
+            const runAnalysis = useCallback(() => {
+                if (!gridState.length) return;
+
+                const width = gridSize.x;
+                const height = gridSize.y;
+                let scores = new Array(width * height).fill(0);
+                
+                items.forEach(item => {
+                    let shapes = [{ w: item.w, h: item.h }];
+                    if (item.w !== item.h) {
+                        shapes.push({ w: item.h, h: item.w });
+                    }
+
+                    shapes.forEach(shape => {
+                        for (let y = 0; y <= height - shape.h; y++) {
+                            for (let x = 0; x <= width - shape.w; x++) {
+                                let valid = true;
+                                let indices = [];
+
+                                for (let dy = 0; dy < shape.h; dy++) {
+                                    for (let dx = 0; dx < shape.w; dx++) {
+                                        const idx = (y + dy) * width + (x + dx);
+                                        if (gridState[idx] === 1) {
+                                            valid = false;
+                                            break;
+                                        }
+                                        indices.push(idx);
+                                    }
+                                    if (!valid) break;
+                                }
+
+                                if (valid) {
+                                    indices.forEach(idx => scores[idx] += item.count);
+                                }
+                            }
+                        }
+                    });
+                });
+                setHeatmap(scores);
+            }, [gridState, gridSize, items]);
+
+            useEffect(() => {
+                if (isAnalysisActive) {
+                    runAnalysis();
+                } else {
+                    setHeatmap(new Array(gridSize.x * gridSize.y).fill(0));
+                }
+            }, [gridState, isAnalysisActive, runAnalysis]);
+
+            // --- Interactions ---
+            const toggleTile = (index) => {
+                if (isPeekingBg || isPeekingFg) return;
+                const newState = [...gridState];
+                newState[index] = newState[index] === 0 ? 1 : 0;
+                setGridState(newState);
+            };
+
+            const handleImageUpload = (e, type) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        if (type === 'bg') {
+                            setBgImage(img);
+                            setBgConfig({ x: 0, y: 0, scale: 0.5 }); 
+                        }
+                        else {
+                            setFgImage(img);
+                            setFgConfig({ x: 0, y: 0, scale: 1.0 });
+                        }
+                    };
+                    img.src = evt.target.result;
+                };
+                reader.readAsDataURL(file);
+            };
+
+            // --- Render ---
+            return (
+                <div className="min-h-screen flex flex-col md:flex-row p-4 gap-6 justify-center items-start max-w-7xl mx-auto">
+                    
+                    {/* Left: Controls */}
+                    <div className="control-panel w-full md:w-80 bg-white p-6 rounded-xl shadow-lg flex flex-col gap-6 max-h-[90vh] overflow-y-auto text-sm shrink-0">
+                        <h1 className="text-xl font-bold text-gray-800 border-b pb-2">Hidden Item Finder</h1>
+
+                        {/* Reset Buttons */}
+                        <div className="grid grid-cols-2 gap-2">
+                             <button onClick={requestClearGridState} className="bg-gray-200 hover:bg-gray-300 text-gray-700 py-1 px-2 rounded text-xs font-bold transition-colors">盤面リセット</button>
+                             <button onClick={requestClearItems} className="bg-gray-200 hover:bg-gray-300 text-gray-700 py-1 px-2 rounded text-xs font-bold transition-colors">アイテムクリア</button>
+                             <button onClick={requestClearAll} className="col-span-2 bg-red-100 hover:bg-red-200 text-red-700 py-1 px-2 rounded text-xs font-bold transition-colors">オールクリア</button>
+                        </div>
+
+                        {/* Stage Config */}
+                        <section>
+                            <h2 className="font-bold text-xs text-gray-500 mb-2 uppercase">1. ステージ設定</h2>
+                            <div className="flex gap-2 items-end">
+                                <div>
+                                    <label className="text-xs">横(X)</label>
+                                    <input id="gridX" type="number" defaultValue={gridSize.x} className="w-full border rounded p-2" />
+                                </div>
+                                <div>
+                                    <label className="text-xs">縦(Y)</label>
+                                    <input id="gridY" type="number" defaultValue={gridSize.y} className="w-full border rounded p-2" />
+                                </div>
+                                <button onClick={handleGridResize} className="bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-700">作成</button>
+                            </div>
+                        </section>
+
+                        {/* Items */}
+                        <section>
+                            <h2 className="font-bold text-xs text-gray-500 mb-2 uppercase">2. アイテム設定</h2>
+                            <div className="flex gap-2 mb-2 items-end">
+                                <div>
+                                    <label className="text-xs block text-gray-400">横</label>
+                                    <input type="number" className="w-12 border rounded p-2" 
+                                    value={newItem.w} onChange={e => setNewItem({...newItem, w: parseInt(e.target.value)||1})} />
+                                </div>
+                                <span className="pb-2">×</span>
+                                <div>
+                                    <label className="text-xs block text-gray-400">縦</label>
+                                    <input type="number" className="w-12 border rounded p-2" 
+                                    value={newItem.h} onChange={e => setNewItem({...newItem, h: parseInt(e.target.value)||1})} />
+                                </div>
+                                <div>
+                                    <label className="text-xs block text-gray-400">個数</label>
+                                    <input type="number" className="w-12 border rounded p-2" 
+                                    value={newItem.count} onChange={e => setNewItem({...newItem, count: parseInt(e.target.value)||1})} />
+                                </div>
+                                <button onClick={() => setItems([...items, { ...newItem, initialCount: newItem.count, id: Date.now() }])} 
+                                    className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-500 font-bold mb-[1px]">+</button>
+                            </div>
+                            <ul className="space-y-2 border-t pt-2 max-h-48 overflow-y-auto">
+                                {items.map(item => (
+                                    <li key={item.id} className="flex justify-between items-center gap-3 bg-gray-50 p-2 rounded border border-gray-100">
+                                        <ItemShapePreview
+                                            item={item}
+                                            onFound={() => setItems(currentItems => currentItems.map(i => i.id === item.id ? { ...i, count: Math.max(0, i.count - 1) } : i))}
+                                            onUndoFound={() => setItems(currentItems => currentItems.map(i => i.id === item.id ? { ...i, count: Math.min(i.initialCount ?? i.count, i.count + 1) } : i))}
+                                        />
+                                        <button onClick={() => setItems(items.filter(i => i.id !== item.id))} className="text-red-500 hover:text-red-700 font-bold" aria-label={`${item.w}×${item.h}のアイテムを削除`}>×</button>
+                                    </li>
+                                ))}
+                                {items.length === 0 && <li className="text-gray-400 text-xs text-center">アイテムがありません</li>}
+                            </ul>
+                        </section>
+
+                        {/* Images */}
+                        <section>
+                            <h2 className="font-bold text-xs text-gray-500 mb-2 uppercase">3. 画像設定</h2>
+                            <div className="space-y-4">
+                                {/* BG Config */}
+                                <div className="bg-gray-50 p-3 rounded border">
+                                    <label className="text-xs font-bold block mb-2">裏画像 (正解)</label>
+                                    <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'bg')} className="text-xs w-full mb-2"/>
+                                    
+                                    {bgImage && (
+                                        <div className="mt-2 pt-2 border-t border-gray-200">
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <input type="checkbox" id="peekBg" checked={isPeekingBg} onChange={e => setIsPeekingBg(e.target.checked)} className="h-4 w-4"/>
+                                                <label htmlFor="peekBg" className="text-xs font-bold text-blue-600 cursor-pointer">位置調整 (タイルを隠す)</label>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <label className="text-xs">X: <input type="range" min="-400" max="400" value={bgConfig.x} onChange={e => setBgConfig({...bgConfig, x: parseInt(e.target.value)})} /></label>
+                                                <label className="text-xs">Y: <input type="range" min="-400" max="400" value={bgConfig.y} onChange={e => setBgConfig({...bgConfig, y: parseInt(e.target.value)})} /></label>
+                                                <label className="text-xs col-span-2">Zoom: <input type="range" min="0.1" max="5" step="0.05" value={bgConfig.scale} onChange={e => setBgConfig({...bgConfig, scale: parseFloat(e.target.value)})} className="w-full" /></label>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                {/* FG Config */}
+                                <div className="bg-gray-50 p-3 rounded border">
+                                    <label className="text-xs font-bold block mb-2">表画像 (タイル)</label>
+                                    <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'fg')} className="text-xs w-full mb-2"/>
+                                    
+                                    {fgImage && (
+                                        <div className="mt-2 pt-2 border-t border-gray-200">
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <input type="checkbox" id="peekFg" checked={isPeekingFg} onChange={e => setIsPeekingFg(e.target.checked)} className="h-4 w-4"/>
+                                                <label htmlFor="peekFg" className="text-xs font-bold text-blue-600 cursor-pointer">位置調整 (全体を表示)</label>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <label className="text-xs">X: <input type="range" min="-400" max="400" value={fgConfig.x} onChange={e => setFgConfig({...fgConfig, x: parseInt(e.target.value)})} /></label>
+                                                <label className="text-xs">Y: <input type="range" min="-400" max="400" value={fgConfig.y} onChange={e => setFgConfig({...fgConfig, y: parseInt(e.target.value)})} /></label>
+                                                <label className="text-xs col-span-2">Zoom: <input type="range" min="0.1" max="5" step="0.05" value={fgConfig.scale} onChange={e => setFgConfig({...fgConfig, scale: parseFloat(e.target.value)})} className="w-full" /></label>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+
+                    {/* Right: Stage */}
+                    <div ref={stageRef} className="flex-1 flex flex-col items-center gap-4 w-full">
+                        
+                        {/* Analysis Toggle */}
+                        <div className="bg-white p-2 rounded-full shadow flex gap-4 items-center px-6 border">
+                            <span className="font-bold text-sm text-gray-600">モード:</span>
+                            <button 
+                                onClick={() => setIsAnalysisActive(!isAnalysisActive)}
+                                className={`px-6 py-2 rounded-full font-bold transition-all ${isAnalysisActive ? 'bg-green-500 text-white shadow-inner' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                            >
+                                {isAnalysisActive ? '分析中 (Auto)' : '分析開始'}
+                            </button>
+                            {isAnalysisActive && <span className="text-xs text-green-600 animate-pulse font-bold">● Running</span>}
+                        </div>
+
+                        {/* Canvas Wrapper */}
+                        <div className="bg-white p-4 rounded-lg shadow-lg max-w-full relative overflow-hidden flex justify-center">
+                            {(isPeekingBg || isPeekingFg) && <div className="absolute top-2 right-2 bg-blue-600 text-white text-xs px-2 py-1 rounded shadow z-10 pointer-events-none">位置調整モード</div>}
+                            <GameCanvas 
+                                gridSize={gridSize} 
+                                tileSize={tileSize}
+                                gridState={gridState} 
+                                onToggle={toggleTile}
+                                heatmap={heatmap}
+                                isAnalysisActive={isAnalysisActive}
+                                bgImage={bgImage}
+                                bgConfig={bgConfig}
+                                isPeekingBg={isPeekingBg}
+                                fgImage={fgImage}
+                                fgConfig={fgConfig}
+                                isPeekingFg={isPeekingFg}
+                            />
+                        </div>
+
+                        <p className="text-xs text-gray-500 text-center">
+                            ※★マークは「最もアイテムが隠れている可能性が高い」場所です。<br/>
+                            ※「作成」ボタンを押すと、画面サイズに合わせてタイルがリサイズされます。
+                        </p>
+                    </div>
+
+                    {/* Custom Confirmation Modal */}
+                    {modalConfig && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                            <div className="bg-white p-6 rounded-lg shadow-xl border border-gray-200 w-72 transform transition-all">
+                                <p className="text-sm font-bold text-gray-800 mb-6">{modalConfig.message}</p>
+                                <div className="flex justify-end gap-3">
+                                    <button 
+                                        className="px-4 py-2 text-xs font-bold text-gray-600 bg-gray-100 rounded hover:bg-gray-200 transition-colors"
+                                        onClick={() => setModalConfig(null)}
+                                    >
+                                        キャンセル
+                                    </button>
+                                    <button 
+                                        className={`px-4 py-2 text-xs font-bold text-white rounded transition-colors ${
+                                            modalConfig.type === 'danger' 
+                                            ? 'bg-red-600 hover:bg-red-700' 
+                                            : 'bg-blue-600 hover:bg-blue-700'
+                                        }`}
+                                        onClick={() => { modalConfig.onConfirm(); setModalConfig(null); }}
+                                    >
+                                        OK
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // --- Canvas Component ---
+        const GameCanvas = ({ 
+            gridSize, tileSize, gridState, onToggle, heatmap, isAnalysisActive, 
+            bgImage, bgConfig, isPeekingBg,
+            fgImage, fgConfig, isPeekingFg 
+        }) => {
+            const canvasRef = useRef(null);
+            
+            // Calculate pixel size
+            const widthPx = gridSize.x * tileSize + (gridSize.x - 1) * GAP;
+            const heightPx = gridSize.y * tileSize + (gridSize.y - 1) * GAP;
+
+            const maxScore = useMemo(() => {
+                if (!heatmap || heatmap.length === 0) return 0;
+                return Math.max(...heatmap);
+            }, [heatmap]);
+
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                
+                // Clear
+                ctx.clearRect(0, 0, widthPx, heightPx);
+
+                // --- 1. Draw Background (Darkened) ---
+                ctx.save();
+                ctx.fillStyle = "#e5e7eb";
+                ctx.fillRect(0, 0, widthPx, heightPx);
+                
+                // Clip for bg image
+                ctx.beginPath();
+                ctx.rect(0, 0, widthPx, heightPx);
+                ctx.clip();
+
+                if (bgImage) {
+                    const bw = bgImage.width;
+                    const bh = bgImage.height;
+                    ctx.translate(widthPx / 2, heightPx / 2);
+                    ctx.translate(bgConfig.x, bgConfig.y);
+                    ctx.scale(bgConfig.scale, bgConfig.scale);
+                    ctx.drawImage(bgImage, -bw / 2, -bh / 2);
+                }
+                ctx.restore();
+
+                // Darken Overlay for BG
+                ctx.save();
+                ctx.fillStyle = "rgba(0, 0, 0, 0.4)"; // Darker tint
+                ctx.fillRect(0, 0, widthPx, heightPx);
+                ctx.restore();
+
+                // If Adjusting BG, stop here
+                if (isPeekingBg) return;
+
+                // --- 2. Draw Tiles Base (For Shadow & Background Color) ---
+                
+                // Helper to apply FG Transform
+                const applyFgTransform = () => {
+                    const fw = fgImage.width;
+                    const fh = fgImage.height;
+                    ctx.translate(widthPx / 2, heightPx / 2);
+                    ctx.translate(fgConfig.x, fgConfig.y);
+                    ctx.scale(fgConfig.scale, fgConfig.scale);
+                    ctx.drawImage(fgImage, -fw / 2, -fh / 2);
+                };
+
+                // A. Peeking Mode (Adjustment)
+                if (isPeekingFg && fgImage) {
+                    ctx.save();
+                    ctx.beginPath(); ctx.rect(0,0,widthPx, heightPx); ctx.clip();
+                    applyFgTransform();
+                    ctx.restore();
+
+                    ctx.save();
+                    ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+                    ctx.lineWidth = 1;
+                    for (let y = 0; y < gridSize.y; y++) {
+                        for (let x = 0; x < gridSize.x; x++) {
+                             ctx.strokeRect(x * (tileSize + GAP), y * (tileSize + GAP), tileSize, tileSize);
+                        }
+                    }
+                    ctx.restore();
+                    return;
+                }
+
+                // B. Game Mode 
+                
+                // Step 2.1: Draw all closed tiles (Base + Shadow)
+                ctx.save();
+                // Shadow Settings
+                ctx.shadowColor = "rgba(0, 0, 0, 0.4)";
+                ctx.shadowBlur = 6;
+                ctx.shadowOffsetX = 2;
+                ctx.shadowOffsetY = 3;
+
+                for (let y = 0; y < gridSize.y; y++) {
+                    for (let x = 0; x < gridSize.x; x++) {
+                        const index = y * gridSize.x + x;
+                        if (gridState[index] === 0) { // Closed
+                            const px = x * (tileSize + GAP);
+                            const py = y * (tileSize + GAP);
+                            
+                            // Fill color acts as the tile body that casts shadow
+                            // If we have an image, we fill with a neutral color (white/gray) to block the background
+                            // If no image, we fill with the blue color
+                            if (fgImage) {
+                                ctx.fillStyle = "#ffffff"; // White base for image
+                            } else {
+                                ctx.fillStyle = "#bae6fd"; // Pale blue
+                            }
+                            ctx.fillRect(px, py, tileSize, tileSize);
+                        }
+                    }
+                }
+                ctx.restore();
+
+                // Step 2.2: Draw Image clipped to closed tiles
+                if (fgImage) {
+                    ctx.save();
+                    ctx.beginPath();
+                    for (let y = 0; y < gridSize.y; y++) {
+                        for (let x = 0; x < gridSize.x; x++) {
+                            const index = y * gridSize.x + x;
+                            if (gridState[index] === 0) { // Closed
+                                ctx.rect(x * (tileSize + GAP), y * (tileSize + GAP), tileSize, tileSize);
+                            }
+                        }
+                    }
+                    ctx.clip();
+                    applyFgTransform();
+                    ctx.restore();
+                }
+
+                // Step 2.3: Overlays (Bevel, Heatmap) - No Shadow here
+                for (let y = 0; y < gridSize.y; y++) {
+                    for (let x = 0; x < gridSize.x; x++) {
+                        const index = y * gridSize.x + x;
+                        const isOpened = gridState[index] === 1;
+                        const px = x * (tileSize + GAP);
+                        const py = y * (tileSize + GAP);
+
+                        if (!isOpened) {
+                            // Bevel / Border
+                            ctx.save();
+                            ctx.strokeStyle = "rgba(255,255,255,0.4)";
+                            ctx.lineWidth = 1.5;
+                            ctx.strokeRect(px, py, tileSize, tileSize);
+                            ctx.restore();
+
+                            // Heatmap Overlay
+                            if (isAnalysisActive) {
+                                const score = heatmap[index] || 0;
+                                if (score > 0) {
+                                    const intensity = score / maxScore;
+                                    ctx.fillStyle = `rgba(220, 38, 38, ${0.1 + intensity * 0.7})`;
+                                    ctx.fillRect(px, py, tileSize, tileSize);
+
+                                    // Star for Max Score
+                                    if (score === maxScore) {
+                                        const cx = px + tileSize / 2;
+                                        const cy = py + tileSize / 2;
+                                        ctx.fillStyle = "#FFD700";
+                                        ctx.strokeStyle = "white";
+                                        ctx.lineWidth = 2;
+                                        drawStar(ctx, cx, cy, 5, tileSize/3.5, tileSize/7);
+                                        ctx.fill();
+                                        ctx.stroke();
+                                    }
+                                } else {
+                                    // Zero chance dim
+                                    ctx.fillStyle = "rgba(0,0,0,0.2)";
+                                    ctx.fillRect(px, py, tileSize, tileSize);
+                                }
+                            }
+                        } else {
+                            // Opened Tile Border (Inset style)
+                            ctx.strokeStyle = "rgba(0,0,0,0.1)";
+                            ctx.lineWidth = 1;
+                            ctx.strokeRect(px, py, tileSize, tileSize);
+                        }
+                    }
+                }
+
+            }, [gridSize, tileSize, gridState, heatmap, isAnalysisActive, bgImage, bgConfig, isPeekingBg, fgImage, fgConfig, isPeekingFg, maxScore]);
+
+            const drawStar = (ctx, cx, cy, spikes, outerRadius, innerRadius) => {
+                let rot = Math.PI / 2 * 3;
+                let x = cx;
+                let y = cy;
+                let step = Math.PI / spikes;
+
+                ctx.beginPath();
+                ctx.moveTo(cx, cy - outerRadius);
+                for (let i = 0; i < spikes; i++) {
+                    x = cx + Math.cos(rot) * outerRadius;
+                    y = cy + Math.sin(rot) * outerRadius;
+                    ctx.lineTo(x, y);
+                    rot += step;
+                    x = cx + Math.cos(rot) * innerRadius;
+                    y = cy + Math.sin(rot) * innerRadius;
+                    ctx.lineTo(x, y);
+                    rot += step;
+                }
+                ctx.lineTo(cx, cy - outerRadius);
+                ctx.closePath();
+            };
+
+            const handleClick = (e) => {
+                // Disable click if adjusting positions
+                if (isPeekingBg || isPeekingFg) return;
+
+                const rect = canvasRef.current.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+                const totalTileSize = tileSize + GAP;
+                const x = Math.floor(clickX / totalTileSize);
+                const y = Math.floor(clickY / totalTileSize);
+
+                if (x >= 0 && x < gridSize.x && y >= 0 && y < gridSize.y) {
+                    const index = y * gridSize.x + x;
+                    onToggle(index);
+                }
+            };
+
+            return (
+                <canvas 
+                    ref={canvasRef}
+                    width={widthPx}
+                    height={heightPx}
+                    onClick={handleClick}
+                    className={`bg-white transition-opacity ${(isPeekingBg || isPeekingFg) ? 'cursor-move' : 'cursor-pointer'}`}
+                    style={{ opacity: (isPeekingBg || isPeekingFg) ? 0.9 : 1 }}
+                />
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
