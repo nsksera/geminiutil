@@ -46,7 +46,7 @@
             const initialCount = item.initialCount ?? item.count;
 
             return (
-                <div className="flex items-center gap-3" title={`${width}×${height}、${item.count}個`}>
+                <div className="flex items-center gap-3" title={`${width}×${height}、残り${item.count}個`}>
                     <div
                         className="grid gap-0.5 shrink-0"
                         style={{ gridTemplateColumns: `repeat(${width}, 0.75rem)` }}
@@ -171,7 +171,7 @@
             // --- Clear Functions ---
             const requestClearGridState = () => {
                 setModalConfig({
-                    message: '盤面の調査状況をリセットしますか？',
+                    message: '盤面の調査状態をリセットしますか？',
                     type: 'normal',
                     onConfirm: () => {
                         setGridState(new Array(gridSize.x * gridSize.y).fill(0));
@@ -364,14 +364,14 @@
                             <div className="space-y-4">
                                 {/* BG Config */}
                                 <div className="bg-gray-50 p-3 rounded border">
-                                    <label className="text-xs font-bold block mb-2">裏画像 (正解)</label>
+                                    <label className="text-xs font-bold block mb-2">背景画像（正解）</label>
                                     <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'bg')} className="text-xs w-full mb-2"/>
                                     
                                     {bgImage && (
                                         <div className="mt-2 pt-2 border-t border-gray-200">
                                             <div className="flex items-center gap-2 mb-3">
                                                 <input type="checkbox" id="peekBg" checked={isPeekingBg} onChange={e => setIsPeekingBg(e.target.checked)} className="h-4 w-4"/>
-                                                <label htmlFor="peekBg" className="text-xs font-bold text-blue-600 cursor-pointer">位置調整 (タイルを隠す)</label>
+                                                <label htmlFor="peekBg" className="text-xs font-bold text-blue-600 cursor-pointer">位置調整（タイルを隠す）</label>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2">
                                                 <label className="text-xs">X: <input type="range" min="-400" max="400" value={bgConfig.x} onChange={e => setBgConfig({...bgConfig, x: parseInt(e.target.value)})} /></label>
@@ -384,14 +384,14 @@
                                 
                                 {/* FG Config */}
                                 <div className="bg-gray-50 p-3 rounded border">
-                                    <label className="text-xs font-bold block mb-2">表画像 (タイル)</label>
+                                    <label className="text-xs font-bold block mb-2">表画像（タイル）</label>
                                     <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'fg')} className="text-xs w-full mb-2"/>
                                     
                                     {fgImage && (
                                         <div className="mt-2 pt-2 border-t border-gray-200">
                                             <div className="flex items-center gap-2 mb-3">
                                                 <input type="checkbox" id="peekFg" checked={isPeekingFg} onChange={e => setIsPeekingFg(e.target.checked)} className="h-4 w-4"/>
-                                                <label htmlFor="peekFg" className="text-xs font-bold text-blue-600 cursor-pointer">位置調整 (全体を表示)</label>
+                                                <label htmlFor="peekFg" className="text-xs font-bold text-blue-600 cursor-pointer">位置調整（全体を表示）</label>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2">
                                                 <label className="text-xs">X: <input type="range" min="-400" max="400" value={fgConfig.x} onChange={e => setFgConfig({...fgConfig, x: parseInt(e.target.value)})} /></label>
@@ -410,7 +410,7 @@
                         
                         {/* Analysis Toggle */}
                         <div className="bg-white p-2 rounded-full shadow flex gap-4 items-center px-6 border">
-                            <span className="font-bold text-sm text-gray-600">モード:</span>
+                            <span className="font-bold text-sm text-gray-600">モード</span>
                             <button 
                                 onClick={() => setIsAnalysisActive(!isAnalysisActive)}
                                 className={`px-6 py-2 rounded-full font-bold transition-all ${isAnalysisActive ? 'bg-green-500 text-white shadow-inner' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
@@ -440,7 +440,7 @@
                         </div>
 
                         <p className="text-xs text-gray-500 text-center">
-                            ※★マークは「最もアイテムが隠れている可能性が高い」場所です。<br/>
+                            ※★マークは、最もアイテムが隠れている可能性が高い場所です。<br/>
                             ※「作成」ボタンを押すと、画面サイズに合わせてタイルがリサイズされます。
                         </p>
                     </div>
