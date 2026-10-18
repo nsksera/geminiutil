@@ -25,7 +25,7 @@ const BET = {
 };
 
 /* ---------- ユーティリティ ---------- */
-const yen  = n => '¥' + Math.round(n).toLocaleString('ja-JP');
+const yen  = n => '¥' + (n < 0 ? '−' : '') + Math.round(Math.abs(n)).toLocaleString('ja-JP');
 const yenF = n  => { const s = Number(n.toFixed(2)).toLocaleString('ja-JP', { maximumFractionDigits: 2 }); return '¥' + s; };
 const lcm  = (a, b) => { const g = (x, y) => y ? g(y, x % y) : x; return a / g(a, b) * b; };
 
@@ -49,11 +49,15 @@ function cardRow(nameText, subText, mainText, secondaryText, isTotal) {
   return r;
 }
 
-function bannerState(state, title, desc, sValue) {
+function bannerState(state, title, desc, sValue, sDrop, dropRate) {
   const b = el('div', 'banner ' + state);
   const t = el('div', 'banner-title');
   t.appendChild(el('span', null, title));
   if (sValue != null) t.appendChild(el('span', 'badge ' + (state === 'ok' ? 'g' : 'r'), 'S = ' + sValue));
+  if (sDrop != null && dropRate > 0) {
+    const okDrop = Number(sDrop) <= 1 + 1e-9;
+    t.appendChild(el('span', 'badge ' + (okDrop ? 'g' : 'r'), `下落${dropRate}%後 = ${sDrop}`));
+  }
   b.appendChild(t);
   b.appendChild(el('div', 'banner-desc', desc));
   if (sValue != null) {
@@ -472,15 +476,19 @@ function runCalc() {
 
   const S = rows.reduce((s, r) => s + 1 / r.e, 0);
   const sTxt = S.toFixed(3);
+  const drop = Number($('dropRate').value);
+  const kDrop = 1 - drop / 100;             /* 全券種一律の補正係数 */
+  const Sdrop = drop > 0 ? S / kDrop : null;  /* 下落後の S */
+  const sTxtDrop = Sdrop != null ? Sdrop.toFixed(3) : null;
 
   const alpha = Number($('alpha').value);
   syncFocusSelect(rows, alpha);
 
   if (S <= 1) {
-    if (alpha >= 100) renderPlan(rows, B, S, sTxt);
-    else renderAttack(rows, B, S, sTxt, alpha);
+    if (alpha >= 100) renderPlan(rows, B, S, sTxt, drop, kDrop, sTxtDrop, Sdrop);
+    else renderAttack(rows, B, S, sTxt, alpha, drop, kDrop, sTxtDrop, Sdrop);
   }
-  else renderInfeasible(rows, B, S, sTxt);
+  else renderInfeasible(rows, B, S, sTxt, drop, Sdrop);
 }
 
 /* ---------- 本命行の選択 ---------- */
@@ -511,6 +519,8 @@ $('roundToggle').addEventListener('change', scheduleCalc);
 $('alpha').addEventListener('input', e => { $('alphaVal').textContent = e.target.value + '%'; scheduleCalc(); });
 $('alpha').addEventListener('change', scheduleCalc);
 $('focusRow').addEventListener('change', scheduleCalc);
+$('dropRate').addEventListener('input', e => { $('dropVal').textContent = e.target.value + '%'; scheduleCalc(); });
+$('dropRate').addEventListener('change', scheduleCalc);
 
 /* ---------- 予想からの提案（着順ごと候補 → 打ち方の提案） ---------- */
 const yState = { pools: [ [], [], [] ], tab: 0 };
@@ -683,6 +693,7 @@ function serialize() {
     budget: $('budget').value,
     round: $('roundToggle').checked,
     alpha: $('alpha').value,
+    drop: $('dropRate').value,
     focus: $('focusRow').value || 'auto',
     rows: [...list.children].map(card => {
       const st = card._st;
@@ -743,6 +754,8 @@ function applyData(data) {
   if (typeof data.round === 'boolean') $('roundToggle').checked = data.round;
   const aNum = Math.min(100, Math.max(0, Math.round(Number(data.alpha))) || 0);
   if (data.alpha != null) { $('alpha').value = aNum; $('alphaVal').textContent = aNum + '%'; }
+  const dNum = Math.min(80, Math.max(0, Math.round(Number(data.drop))) || 0);
+  if (data.drop != null) { $('dropRate').value = dNum; $('dropVal').textContent = dNum + '%'; }
   if (data.focus && typeof data.focus === 'string') $('focusRow').dataset.restore = data.focus;
   scheduleCalc();
   return true;
@@ -883,23 +896,30 @@ function allocate(rows, budget, S) {
 }
 
 /* ---------- 成立時: 配分 ---------- */
-function renderPlan(rows, B, S, sTxt) {
+function renderPlan(rows, B, S, sTxt, drop, kDrop, sTxtDrop, Sdrop) {
   const stake = allocate(rows, B, S);
   const T = stake.reduce((a, b) => a + b, 0);
   const payouts = rows.map((r, i) => r.e * stake[i]);   /* 最悪組合せ的中時の払戻 */
   const minP = Math.min(...payouts);
+  const minPd = kDrop < 1 ? minP * kDrop : null;        /* 下落想定の最低払戻 */
   const okExact = minP + 1e-6 >= T;
   const spare = B - T;
   const hasMulti = rows.some(r => r.count > 1);
+  /* 下落を考慮しても成立するか（全券種一律なので S/kDrop ≤ 1 が条件） */
+  const okDrop = Sdrop == null || Sdrop <= 1 + 1e-9;
 
   result.replaceChildren(
     bannerState(
-      okExact ? 'ok' : 'warn',
-      okExact ? '成立 — 全シナリオで払戻が総掛金を上回ります' : 'ほぼ成立 — 丸めの関係で若干の不足があります',
+      okExact ? (okDrop ? 'ok' : 'warn') : 'warn',
       okExact
-        ? `どのパターンが単体でも・同時でも的中しても、払戻は総掛金 ${yen(T)} 以上です。`
+        ? (okDrop ? '成立 — 下落しても保証内です' : '成立 — ただし下落すると保証外')
+        : 'ほぼ成立 — 丸めの関係で若干の不足があります',
+      okExact
+        ? (okDrop
+          ? `どのパターンが単体でも・同時でも的中しても、払戻は総掛金 ${yen(T)} 以上です。オッズが ${drop}% 下がっても保証は壊れません。`
+          : `現在のオッズではどの的中でも総掛金 ${yen(T)} 以上が返ります。ただしオッズが ${drop}% 下落すると、最悪時の払戻は ${yen(minPd)} に押さえられ、保証は外れます。`)
         : `最悪シナリオの払戻が総掛金を ${yen(T - minP)} 下回ります。丸めをオフにすると理論どおりになります。`,
-      sTxt
+      sTxt, sTxtDrop, drop
     )
   );
 
@@ -907,11 +927,16 @@ function renderPlan(rows, B, S, sTxt) {
   rows.forEach((r, i) => {
     const per = r.count > 1 ? yenF(stake[i] / r.count) + ' × ' + r.count + '点' : yen(stake[i]);
     const subText = 'オッズ ' + r.odds + '倍（最低）' + (r.count > 1 ? '・' + r.count + '点' : '');
-    c1.appendChild(cardRow(r.name, subText, per, '的中時(最悪) ' + yen(payouts[i]), false));
+    const sec = '的中時(最悪) ' + yen(payouts[i]) +
+      (minPd != null ? '（下落想定 ' + yen(payouts[i] * kDrop) + '）' : '');
+    c1.appendChild(cardRow(r.name, subText, per, sec, false));
   });
   c1.appendChild(cardRow('総掛金', spare > 0.5 ? `端数 ${yen(spare)} は未使用` : '', yen(T), null, true));
   c1.appendChild(cardRow(hasMulti ? '最低払戻（最悪組合せ的中時）' : '最低払戻（1点的中時）',
-    '全パターン共通', yen(minP), '利益 ' + yen(Math.max(minP - T, 0)), true));
+    '全パターン共通', yen(minP),
+    '利益 ' + yen(Math.max(minP - T, 0)) +
+      (minPd != null ? ` / 下落想定 ${yen(minPd)}・利益 ${yen(Math.round(minPd - T))}` : ''),
+    true));
   result.appendChild(c1);
 
   const c2 = el('div', 'result-card');
@@ -921,7 +946,7 @@ function renderPlan(rows, B, S, sTxt) {
 }
 
 /* ---------- 攻撃配分（保険 ＋ 本命集中） ---------- */
-function renderAttack(rows, B, S, sTxt, alpha) {
+function renderAttack(rows, B, S, sTxt, alpha, drop, kDrop, sTxtDrop, Sdrop) {
   const k = pickFocus(rows);
   const G = Math.floor(B * alpha / 100);   /* 保険に回す予算 */
   const C = B - G;                          /* 本命に集中させる予算 */
@@ -937,9 +962,14 @@ function renderAttack(rows, B, S, sTxt, alpha) {
   const T = stake.reduce((a, b) => a + b, 0);
   const payouts = rows.map((r, i) => r.e * stake[i]);   /* 最悪組合せ的中時の払戻 */
   const minP = Math.min(...payouts);
+  const minPd = kDrop < 1 ? minP * kDrop : null;
   const spare = B - T;
   const hasMulti = rows.some(r => r.count > 1);
   const gSpent = T - y;
+  const okDrop = Sdrop == null || Sdrop <= 1 + 1e-9;
+  const dropNote = minPd != null
+    ? `オッズが ${drop}% 下がると最低 ${yen(minPd)}（利益 ${yen(Math.round(minPd - T))}）まで縮みます${okDrop ? '' : '。保証は外れます'}。`
+    : '';
 
   /* 集中に必要な金額が丸め単位に満たない場合の注意 */
   const tooSmall = y === 0 && alpha > 0;
@@ -952,8 +982,8 @@ function renderAttack(rows, B, S, sTxt, alpha) {
         ? (tooSmall ? '集中額が丸め単位に満たず、投じられていません。' : `予算すべてを本命「${rows[k].name}」に集中しています。本命が外れた場合、掛けた全額を失います。`)
         : (tooSmall
           ? 'この安全率では集中額が100円単位に満たず、 通常どおりの保険配分になります。安全率をさらに下げるか馬券の点数を減らすと集中できます。'
-          : `保険 ${yen(gSpent)}: 本命以外の行が的中した場合も最低 ${yen(minP)} は返ります。本命「${rows[k].name}」に ${yen(y)} を集中し、的中時は最大 ${yen(payouts[k])}。`),
-      sTxt
+          : `保険 ${yen(gSpent)}: 本命以外の行が的中した場合も最低 ${yen(minP)} は返ります。本命「${rows[k].name}」に ${yen(y)} を集中し、的中時は最大 ${yen(payouts[k])}。${dropNote ? ' ' + dropNote : ''}`),
+      sTxt, sTxtDrop, drop
     )
   );
 
@@ -962,13 +992,18 @@ function renderAttack(rows, B, S, sTxt, alpha) {
     const per = r.count > 1 ? yenF(stake[i] / r.count) + ' × ' + r.count + '点' : yen(stake[i]);
     let subText = 'オッズ ' + r.odds + '倍（最低）' + (r.count > 1 ? '・' + r.count + '点' : '');
     if (i === k && y > 0) subText += '・集中 ' + yen(y);
-    c1.appendChild(cardRow((i === k ? '★本命 ' : '') + r.name, subText, per, '的中時(最悪) ' + yen(payouts[i]), false));
+    const sec = '的中時(最悪) ' + yen(payouts[i]) +
+      (minPd != null ? '（下落想定 ' + yen(payouts[i] * kDrop) + '）' : '');
+    c1.appendChild(cardRow((i === k ? '★本命 ' : '') + r.name, subText, per, sec, false));
   });
   c1.appendChild(cardRow('総掛金',
     `保険 ${yen(gSpent)} ＋ 集中 ${yen(y)}` + (spare > 0.5 ? `・端数 ${yen(spare)} 未使用` : ''),
     yen(T), null, true));
   c1.appendChild(cardRow(hasMulti ? '最低払戻（本命以外が的中時）' : '最低払戻（他行が的中時）',
-    '保険部分の保証', yen(minP), '本命中との差 ' + yen(payouts[k] - minP), true));
+    '保険部分の保証', yen(minP),
+    '本命中との差 ' + yen(payouts[k] - minP) +
+      (minPd != null ? ` / 下落想定 ${yen(minPd)}・利益 ${yen(Math.round(minPd - T))}` : ''),
+    true));
   result.appendChild(c1);
 
   const c2 = el('div', 'result-card');
@@ -979,11 +1014,14 @@ function renderAttack(rows, B, S, sTxt, alpha) {
 }
 
 /* ---------- 不成立時: 削除候補 + 均衡配分 ---------- */
-function renderInfeasible(rows, B, S, sTxt) {
+function renderInfeasible(rows, B, S, sTxt, drop, Sdrop) {
+  const dropLine = (drop > 0 && Sdrop != null)
+    ? ` 下落${drop}%想定では S = ${Sdrop.toFixed(3)}。${Sdrop <= 1 ? 'そこまで下がれば成立します。' : '下がっても成立しません。'}`
+    : '';
   result.replaceChildren(
     bannerState('ng', '不成立 — 理論上ショート不可避',
-      'このパターン群全体では、どれが的中しても損しない配分は存在しません（実効オッズの逆数合計 S が 1 を超えています）。一部を外すか、まとめの点数・オッズを見直してください。',
-      sTxt)
+      'このパターン群全体では、どれが的中しても損しない配分は存在しません（実効オッズの逆数合計 S が 1 を超えています）。一部を外すか、まとめの点数・オッズを見直してください。' + dropLine,
+      sTxt, Sdrop != null ? Sdrop.toFixed(3) : null, drop)
   );
 
   /* 貪欲法: 実効オッズの低い（逆数比の重い）パターンから順に外す */

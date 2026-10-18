@@ -104,6 +104,13 @@
       </select>
     </div>
     <p class="footnote" id="alphaHint">安全率100%で赤字回避配分。下げるほど予算の一部を本命に集中させ、最悪シナリオの払戻が減る代わりに本命的中時の払戻が増えます。</p>
+    <div class="row">
+      <label for="dropRate" class="row-label">オッズ下落率（締切想定）</label>
+      <span id="dropVal" class="row-value">30%</span>
+    </div>
+    <input id="dropRate" class="alpha-range" type="range" min="0" max="80" step="5" value="30"
+      aria-describedby="dropHint">
+    <p class="footnote" id="dropHint">締切までにオッズがこの率で下がった場合の結果も、すべての券種に一律補正して結果カードに併記します（0%でオフ）。</p>
   </section>
 
   <button id="calcBtn" class="primary" type="button">配分を計算</button>
