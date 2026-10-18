@@ -1,0 +1,599 @@
+/* ===== 馬券配分プランナー — HIGベースのシンプルデザイン ===== */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #F2F2F7;
+  --card: #FFFFFF;
+  --text: #1C1C1E;
+  --secondary: #8A8A8E;
+  --separator: rgba(60, 60, 67, 0.12);
+  --accent: #007AFF;
+  --green: #34C759;
+  --red: #FF3B30;
+  --orange: #FF9500;
+  --inset: rgba(120, 120, 128, 0.10);   /* 馬券サブカード */
+  --chip: rgba(120, 120, 128, 0.14);    /* 種類チップ */
+  --key: #E9E9EE;                       /* テンキー */
+}
+
+html { background: var(--bg); }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+               "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", sans-serif;
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top, 0px) + 24px) 16px
+           calc(env(safe-area-inset-bottom, 0px) + 32px) 16px;
+}
+
+/* ---------- ヘッダー ---------- */
+.header h1 { font-size: 28px; font-weight: 700; letter-spacing: .02em; margin-bottom: 6px; }
+.header .caption { font-size: 13px; color: var(--secondary); margin-bottom: 20px; }
+
+/* ---------- カード ---------- */
+.card {
+  background: var(--card);
+  border-radius: 14px;
+  padding: 4px 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.card-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 0 8px; }
+.card h2 { font-size: 13px; font-weight: 600; letter-spacing: .03em; color: var(--secondary); }
+
+/* ---------- 馬券パターン（サブカード） ---------- */
+.pattern-card {
+  position: relative;      /* ✕ボタン（右上絶対配置）の基準 */
+  background: var(--inset);
+  border-radius: 12px;
+  padding: 4px 12px 10px;
+  margin-top: 10px;
+  overflow: hidden;        /* 追加/削除アニメーション中のはみ出し防止 */
+}
+.pattern-card.entering { animation: cardIn .22s cubic-bezier(.25,.9,.35,1); }
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(-10px); }
+}
+.chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 30px 8px 0; }
+.chip {
+  border: none;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.chip:active { opacity: .6; }
+.chip.on { background: var(--accent); color: #fff; }
+
+/* ---------- キーパッド（電卓型） ---------- */
+.keypad { padding: 2px 0 4px; }
+
+.seg {
+  display: flex;
+  gap: 2px;
+  background: var(--chip);
+  border-radius: 9px;
+  padding: 2px;
+  margin-bottom: 6px;
+}
+.seg button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--secondary);
+  padding: 6px 4px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.seg button.on {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
+}
+.kp-hint { font-size: 13px; color: var(--secondary); padding: 6px 2px 8px; }
+
+.pool-tabs { display: flex; gap: 6px; padding: 4px 0 6px; }
+.pool-tab {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-radius: 8px;
+  background: var(--chip);
+  color: var(--secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background .15s;
+}
+.pool-tab.on { background: var(--accent); color: #fff; }
+
+.keygrid { display: grid; gap: 6px; }
+.key {
+  height: 42px;
+  border: none;
+  border-radius: 10px;
+  background: var(--key);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .08s, background .15s;
+}
+.key:active { transform: scale(.94); }
+.key.u2 { grid-column: span 2; }
+.key.u3 { grid-column: span 3; }
+.key.u4 { grid-column: span 4; }
+.key.util { color: var(--accent); font-weight: 600; }
+
+/* 満席の入力を拒否: 揺れ＋メッセージ（赤リングは枠キーの選択リングと紛れるため不使用） */
+@keyframes denyShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+.key.deny { animation: denyShake .4s ease-in-out; color: #FF453A; }
+
+.deny-msg {
+  font-size: 12px;
+  font-weight: 600;
+  color: #FF453A;
+  padding: 2px 2px 6px;
+}
+
+/* 枠番の伝統色 */
+.key.w1 { background: #f5f5f5; color: #1c1c1e; }
+.key.w2 { background: #101014; color: #fff; }
+.key.w3 { background: #d73b32; color: #fff; }
+.key.w4 { background: #2b6bd7; color: #fff; }
+.key.w5 { background: #eec300; color: #1c1c1e; }
+.key.w6 { background: #2f9e44; color: #fff; }
+.key.w7 { background: #e8821e; color: #fff; }
+.key.w8 { background: #f19cb0; color: #1c1c1e; }
+
+.key.on:not(.waku) { background: var(--accent); color: #fff; }
+.key.waku.on { box-shadow: 0 0 0 3px var(--accent); }
+
+/* ---------- 下段（選択状態＋オッズ） ---------- */
+/* ✕削除ボタンはカード右上（絶対配置）へ移設済み。フッターは combo + oddsDisp のみ */
+.pattern-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 0.5px solid var(--separator);
+  padding-top: 8px;
+  margin-top: 6px;
+}
+.combo {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  color: var(--secondary);
+}
+.combo.set { color: var(--text); }
+
+.odds-disp {
+  flex: none;
+  min-width: 92px;
+  text-align: right;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--secondary);
+  background: none;
+  border: none;
+  font: inherit;
+  font-weight: 700;
+  height: 42px;
+  padding: 0;
+  cursor: pointer;
+}
+.odds-disp.set { color: var(--text); }
+.odds-disp.on { color: var(--accent); }
+.odds-disp.invalid { color: var(--red); }
+
+/* カード右上に独立配置（チップ行との干渉を padding で回避） */
+.del-btn {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 1;
+  width: 28px; height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: var(--chip);
+  color: var(--secondary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 視覚効果を減らす設定のときはアニメなし */
+@media (prefers-reduced-motion: reduce) {
+  .pattern-card.entering { animation: none; }
+}
+.del-btn:active { opacity: .6; }
+
+.add-btn {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 12px 2px;
+}
+.add-btn:active { opacity: .6; }
+.add-row { display: flex; gap: 8px; align-items: stretch; }
+.add-row .add-btn { display: block; }
+.footnote { font-size: 12px; color: var(--secondary); padding: 0 0 12px; }
+
+/* ---------- 行（ラベル＋入力） ---------- */
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+.row + .row { border-top: 0.5px solid var(--separator); }
+.row-label { font-size: 17px; }
+.row input[type="text"] { flex: 1; text-align: right; }
+.row-value { font-size: 17px; color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ---------- 攻撃配分コントロール ---------- */
+.alpha-range {
+  width: 100%;
+  margin: 10px 0 2px;
+  accent-color: var(--accent);
+  appearance: none;
+  height: 28px;
+  background: transparent;
+}
+.alpha-range:focus { outline: none; }
+.alpha-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .3);
+  cursor: pointer;
+  /* thumb(26px) を track(4px) の中心に揃える: (4 - 26) / 2 = -11px */
+  margin-top: calc((4px - 26px) / 2);
+}
+.alpha-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--track, rgba(120, 120, 128, 0.24));
+}
+/* Firefox（track の中心に自動センタリングだが同期を明示しておく） */
+.alpha-range::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--track, rgba(120, 120, 128, 0.24));
+}
+.alpha-range::-moz-range-thumb {
+  width: 26px; height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .3);
+  cursor: pointer;
+}
+select#focusRow {
+  flex: 1;
+  max-width: 62%;
+  font: inherit;
+  font-size: 14px;
+  color: var(--accent);
+  background: transparent;
+  border: none;
+  text-align: right;
+  cursor: pointer;
+}
+select#focusRow:disabled { color: var(--secondary); cursor: default; }
+
+/* ---------- iOS風スイッチ ---------- */
+.switch-row { position: relative; }
+.switch-row input.toggle {
+  position: absolute;
+  width: 1px; height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.slider {
+  position: relative;
+  width: 50px; height: 30px;
+  border-radius: 15px;
+  background: rgba(120, 120, 128, 0.24);
+  transition: background .2s;
+  flex: none;
+}
+.slider::before {
+  content: '';
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .18);
+  transition: transform .2s;
+}
+.toggle:checked + .slider { background: var(--green); }
+.toggle:checked + .slider::before { transform: translateX(20px); }
+
+/* ---------- プライマリボタン ---------- */
+.primary {
+  display: block;
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  padding: 14px;
+  cursor: pointer;
+  transition: opacity .15s, transform .1s;
+  margin-bottom: 20px;
+}
+.primary:active { opacity: .7; transform: scale(.99); }
+
+/* ---------- 結果 ---------- */
+#result { margin-bottom: 20px; }
+
+.banner { border-radius: 14px; padding: 14px 16px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0, 0, 0, .04); }
+.banner.ok   { background: rgba(52, 199, 89, .12); }
+.banner.warn { background: rgba(255, 149, 0, .12); }
+.banner.ng   { background: rgba(255, 59, 48, .12); }
+.banner-title {
+  font-size: 17px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.banner.ok .banner-title { color: #1d8a3e; }
+.banner.warn .banner-title { color: #b26a00; }
+.banner.ng .banner-title { color: #c1281f; }
+.banner-desc { font-size: 13px; color: var(--secondary); margin-top: 2px; }
+
+.gauge {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(120, 120, 128, .2);
+  margin-top: 10px;
+  overflow: hidden;
+}
+.gauge-fill { height: 100%; border-radius: 3px; background: var(--green); transition: width .3s ease; }
+.banner.ng .gauge-fill { background: var(--red); }
+.banner.warn .gauge-fill { background: var(--orange); }
+
+/* 結果テーブル（グループ化リスト） */
+.result-card {
+  background: var(--card);
+  border-radius: 14px;
+  padding: 4px 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+}
+.result-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 0;
+  font-size: 15px;
+}
+.result-row + .result-row { border-top: 0.5px solid var(--separator); }
+.result-row .name { overflow-wrap: anywhere; font-weight: 500; }
+.result-row .sub { flex: none; color: var(--secondary); font-size: 13px; white-space: nowrap; }
+.result-row.total { font-weight: 700; font-size: 17px; }
+
+.suggest-item {
+  padding: 10px 0;
+  font-size: 15px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.suggest-item + .suggest-item { border-top: 0.5px solid var(--separator); }
+.suggest-item .s-name { overflow-wrap: anywhere; }
+
+/* ---------- 注意書き ---------- */
+.disclaimer p { font-size: 11px; color: var(--secondary); line-height: 1.65; }
+
+/* ---------- 使い方ガイド (help.html) ---------- */
+.helplink { font-size: 13px; margin-bottom: 16px; }
+.helplink a { color: var(--accent); text-decoration: none; font-weight: 600; }
+.help-p { font-size: 14px; line-height: 1.75; padding: 6px 0; }
+.help-ul { font-size: 14px; line-height: 1.75; padding-left: 22px; margin: 6px 0; }
+.help-ul li { padding: 3px 0; }
+.help-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0 4px; }
+.help-table th, .help-table td { text-align: left; padding: 9px 10px; border-top: 0.5px solid var(--separator); }
+.help-table tr:first-child th { border-top: none; color: var(--secondary); font-size: 12px; font-weight: 600; }
+.help-table td:first-child, .help-table th:first-child { padding-left: 0; }
+.kbd {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 6px;
+  background: var(--chip);
+}
+
+.helplink-inline { white-space: nowrap; }
+.helplink-inline, .helplink a { color: var(--accent); text-decoration: none; font-weight: 600; }
+
+/* ---------- カードのメモ ---------- */
+.memo-input {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-top: 0.5px solid var(--separator);
+  padding: 10px 2px 12px;
+  margin-top: 2px;
+}
+.memo-input::placeholder { color: var(--secondary); }
+.memo-input:focus { outline: none; }
+
+/* ---------- データ保存 / 読込 ---------- */
+.data-btn {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--chip);
+  border: none;
+  border-radius: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: filter .15s;
+}
+.data-btn:hover { filter: brightness(1.12); }
+
+/* ---------- 予算 ---------- */
+.budget-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--secondary);
+  padding: 0 2px 6px;
+}
+.budget-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--chip);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 10px;
+}
+.budget-field .yen {
+  color: var(--secondary);
+  font-size: 20px;
+  font-weight: 700;
+}
+.budget-field input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 0;
+}
+.budget-field input:focus { outline: none; }
+.budget-field input::placeholder { color: var(--secondary); }
+
+/* ---------- レース情報 ---------- */
+.race-row { display: flex; gap: 8px; }
+.race-row input, .race-row select {
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--chip);
+  border: none;
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+#raceDate { flex: 1.4; }
+#raceVenue { flex: 1.3; }
+#raceNo { flex: 0.7; min-width: 64px; }
+select#raceVenue option { color: initial; }
+
+/* ---------- 予想からの提案 ---------- */
+.y-clear-row { display: flex; margin-top: 6px; }
+.y-clear-row .key { flex: 1; }
+.yoso-list { margin-top: 10px; }
+.y-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 2px;
+  border-top: 0.5px solid var(--separator);
+}
+.y-row:first-child { border-top: none; }
+.y-info { flex: 1; min-width: 0; }
+.y-kind { font-size: 14px; font-weight: 600; }
+.y-ex {
+  display: block;
+  font-size: 12px;
+  color: var(--secondary);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.y-add {
+  flex: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 999px;
+  padding: 7px 16px;
+  cursor: pointer;
+}
+.y-row .y-count { flex: none; font-size: 13px; color: var(--secondary); font-variant-numeric: tabular-nums; }
+.y-hint { font-size: 13px; color: var(--secondary); padding: 6px 2px; }
+
+.hidden { display: none !important; }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --card: #1C1C1E;
+    --text: #FFFFFF;
+    --secondary: #98989F;
+    --separator: rgba(84, 84, 88, 0.6);
+    --accent: #0A84FF;
+    --green: #30D158;
+    --red: #FF453A;
+    --orange: #FF9F0A;
+    --inset: rgba(120, 120, 128, 0.22);
+    --chip: rgba(120, 120, 128, 0.28);
+    --key: #2C2C2E;
+  }
+  .banner.ok .banner-title { color: #6ee89a; }
+  .banner.warn .banner-title { color: #ffc061; }
+  .banner.ng .banner-title { color: #ff8b84; }
+}

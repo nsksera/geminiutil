@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#F2F2F7">
+<title>馬券配分プランナー</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="app">
+
+  <header class="header">
+    <h1>馬券配分プランナー</h1>
+    <p class="caption">オッズの逆数合計が1以下なら、どの馬券が的中しても払戻が総掛金を下回らない配分を計算します。初めての方は <a href="help.html" class="helplink-inline">使い方ガイド</a> へ。</p>
+  </header>
+
+  <section class="card" aria-labelledby="raceTitle">
+    <div class="card-head"><h2 id="raceTitle">レース情報</h2></div>
+    <div class="race-row">
+      <input id="raceDate" type="date" aria-label="年月日">
+      <select id="raceVenue" aria-label="競馬場">
+        <option value="" selected>競馬場…</option>
+        <optgroup label="中央競馬">
+          <option value="Sapporo">札幌</option>
+          <option value="Hakodate">函館</option>
+          <option value="Fukushima">福島</option>
+          <option value="Niigata">新潟</option>
+          <option value="Tokyo">東京</option>
+          <option value="Nakayama">中山</option>
+          <option value="Chukyo">中京</option>
+          <option value="Kyoto">京都</option>
+          <option value="Hanshin">阪神</option>
+          <option value="Kokura">小倉</option>
+        </optgroup>
+        <optgroup label="地方競馬">
+          <option value="Obihiro">帯広</option>
+          <option value="Mombetsu">門別</option>
+          <option value="Morioka">盛岡</option>
+          <option value="Mizusawa">水沢</option>
+          <option value="Urawa">浦和</option>
+          <option value="Funabashi">船橋</option>
+          <option value="Ohi">大井</option>
+          <option value="Kawasaki">川崎</option>
+          <option value="Nagoya">名古屋</option>
+          <option value="Kasamatsu">笠松</option>
+          <option value="Sonoda">園田</option>
+          <option value="Himeji">姫路</option>
+          <option value="Kanazawa">金沢</option>
+          <option value="Kochi">高知</option>
+          <option value="Saga">佐賀</option>
+        </optgroup>
+      </select>
+      <input id="raceNo" type="number" min="1" max="12" step="1" inputmode="numeric" placeholder="R" aria-label="レース番号">
+    </div>
+    <p class="footnote">書き出す保存ファイル名は <span id="fileNameNote">keiba-guard-YYYY-MM-DD.json</span> になります（記入した内容が反映されます）。</p>
+  </section>
+
+  <section class="card" aria-labelledby="yosoTitle">
+    <div class="card-head"><h2 id="yosoTitle">予想からの提案</h2></div>
+    <div class="seg" id="yosoTabs" role="tablist"></div>
+    <div class="keypad" id="yosoKeypad"></div>
+    <div class="y-clear-row"><button id="yosoClear" class="key util" type="button">全クリア</button></div>
+    <div id="yosoList" class="yoso-list" aria-live="polite"></div>
+    <p class="footnote">着順ごとに当てはまると思う馬番を複数選択（例: 1着「1」・2着「2,3」・3着「3,4」）。提案の横の点数が買い目の数です。「追加」でその打ち方のカードを馬券パターンへ持って行けます（配分にはオッズ入力が必要）。</p>
+  </section>
+
+  <section class="card" aria-labelledby="patternsTitle">
+    <div class="card-head"><h2 id="patternsTitle">馬券パターン</h2></div>
+    <div id="patternList"></div>
+    <div class="add-row">
+      <button id="addPattern" class="add-btn" type="button">＋ 馬券を追加</button>
+      <button id="dupLast" class="add-btn" type="button">＋ 直前を複製</button>
+    </div>
+    <p class="footnote">種類 → テンキーで馬番（1〜18）・枠番（1〜8）を選択、「まとめ」タブでボックス・ながし・フォーメーション（着順ごとの候補 → 点数は自動計算）、「オッズ」キーで最低オッズ入力。馬単・枠単・3連単は押した順に1着 → 2着 → 3着。</p>
+  </section>
+
+  <section class="card" aria-labelledby="budgetTitle">
+    <div class="card-head"><h2 id="budgetTitle">予算</h2></div>
+    <label class="budget-label" for="budget">総予算</label>
+    <div class="budget-field">
+      <span class="yen" aria-hidden="true">¥</span>
+      <input id="budget" type="text" inputmode="numeric" value="10,000" autocomplete="off" placeholder="10,000">
+    </div>
+    <label class="row switch-row" for="roundToggle">
+      <span class="row-label">100円単位に丸める</span>
+      <input type="checkbox" id="roundToggle" class="toggle" checked>
+      <span class="slider" aria-hidden="true"></span>
+    </label>
+  </section>
+
+  <section class="card" aria-labelledby="styleTitle">
+    <div class="card-head"><h2 id="styleTitle">配分スタイル</h2></div>
+    <div class="row">
+      <label for="alpha" class="row-label">安全率</label>
+      <span id="alphaVal" class="row-value">100%</span>
+    </div>
+    <input id="alpha" class="alpha-range" type="range" min="0" max="100" step="5" value="100"
+      aria-describedby="alphaHint">
+    <div class="row">
+      <label for="focusRow" class="row-label">本命（集中先）</label>
+      <select id="focusRow">
+        <option value="auto">自動（もっとも高いオッズの行）</option>
+      </select>
+    </div>
+    <p class="footnote" id="alphaHint">安全率100%で赤字回避配分。下げるほど予算の一部を本命に集中させ、最悪シナリオの払戻が減る代わりに本命的中時の払戻が増えます。</p>
+  </section>
+
+  <button id="calcBtn" class="primary" type="button">配分を計算</button>
+
+  <section id="result" class="hidden" aria-live="polite"></section>
+
+  <section class="card" aria-labelledby="dataTitle">
+    <div class="card-head"><h2 id="dataTitle">データ</h2></div>
+    <label class="row switch-row" for="autoSave">
+      <span class="row-label">自動保存（この端末）</span>
+      <input type="checkbox" id="autoSave" class="toggle" checked>
+      <span class="slider" aria-hidden="true"></span>
+    </label>
+    <div class="row data-row">
+      <button id="exportBtn" class="data-btn" type="button">書き出す（ファイル）</button>
+      <button id="importBtn" class="data-btn" type="button">読み込む（ファイル）</button>
+      <input id="importFile" type="file" accept="application/json,.json" hidden>
+    </div>
+    <p class="footnote">自動保存はこの端末に保存され、ページ再読込後にも復元します。端末やブラウザが変わるときは「書き出す」でバックアップファイル（JSON）を持ち出し、「読み込む」で復元してください。</p>
+  </section>
+
+  <footer class="disclaimer">
+    <p>※ 本アプリは理論値の参考表示です。オッズは変動し、締切後の最終オッズとは異なります。購入馬券がすべて外れた場合、掛けた全額を失います。返還・控除・特払い等の実際の精算規定とは異なる場合があります。</p>
+  </footer>
+
+</main>
+<script src="app.js"></script>
+</body>
+</html>
