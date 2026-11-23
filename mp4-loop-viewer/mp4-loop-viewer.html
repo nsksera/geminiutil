@@ -813,7 +813,8 @@
         uiVisible: true,
         overlayIdle: false,
         idleTimer: null,
-        rotation: 0
+        rotation: 0,
+        zoom: 1
       };
 
       const ROTATION_STORAGE_KEY = "mp4LoopViewer.rotations.v1";
@@ -832,8 +833,10 @@
         const item = getCurrentFile();
         if (!item || !item.file) return;
         const key = fileCacheKey(item.file);
-        if (state.rotation) {
-          savedRotations[key] = Math.round(state.rotation * 10) / 10;
+        const deg = Math.round((state.rotation || 0) * 10) / 10;
+        const zoom = Math.round((state.zoom || 1) * 1000) / 1000;
+        if (deg || zoom !== 1) {
+          savedRotations[key] = { r: deg, z: zoom };
         } else {
           delete savedRotations[key];
         }
@@ -844,20 +847,52 @@
         }
       }
 
-      function applyRotation() {
-        const deg = state.rotation || 0;
-        if (!deg) {
-          els.player.style.transform = "";
-          return;
+      function restoreRotationFor(item) {
+        const saved = item && item.file ? savedRotations[fileCacheKey(item.file)] : null;
+        if (typeof saved === "number") {
+          state.rotation = saved;
+          state.zoom = 1;
+        } else if (saved && typeof saved === "object") {
+          state.rotation = Number(saved.r) || 0;
+          state.zoom = Number(saved.z) || 1;
+        } else {
+          state.rotation = 0;
+          state.zoom = 1;
         }
+      }
+
+      function rotationCoverScale() {
         const videoWidth = els.player.videoWidth;
         const videoHeight = els.player.videoHeight;
-        let cover = 1;
-        if (videoWidth && videoHeight) {
-          const rad = Math.abs(deg) * Math.PI / 180;
-          cover = Math.cos(rad) + Math.sin(rad) * Math.max(videoWidth / videoHeight, videoHeight / videoWidth);
+        const deg = Math.abs(state.rotation || 0);
+        if (!videoWidth || !videoHeight || !deg) return 1;
+        const rad = deg * Math.PI / 180;
+        return Math.cos(rad) + Math.sin(rad) * Math.max(videoWidth / videoHeight, videoHeight / videoWidth);
+      }
+
+      function effectiveZoom() {
+        const deg = Math.abs(state.rotation || 0);
+        let minZoom = 1;
+        if (deg) {
+          const width = els.player.clientWidth;
+          const height = els.player.clientHeight;
+          const wrapWidth = els.videoWrap.clientWidth;
+          const wrapHeight = els.videoWrap.clientHeight;
+          if (width && height && wrapWidth && wrapHeight) {
+            const rad = deg * Math.PI / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+            const fit = Math.min(wrapWidth / (width * cos + height * sin), wrapHeight / (width * sin + height * cos));
+            minZoom = Math.min(1, fit / rotationCoverScale());
+          }
         }
-        els.player.style.transform = `rotate(${deg}deg) scale(${cover})`;
+        return { zoom: Math.min(2, Math.max(minZoom, state.zoom || 1)), minZoom };
+      }
+
+      function applyRotation() {
+        const deg = state.rotation || 0;
+        const scale = rotationCoverScale() * effectiveZoom().zoom;
+        els.player.style.transform = (deg || scale !== 1) ? `rotate(${deg}deg) scale(${scale})` : "";
       }
 
       const els = {
@@ -978,6 +1013,7 @@
       function resetPlayback() {
         state.stepIndex = 0;
         state.rotation = 0;
+        state.zoom = 1;
         els.player.removeAttribute("src");
         resetPlayerSizing();
         els.player.style.transform = "";
@@ -1806,7 +1842,7 @@
         if (els.player.src !== item.url) {
           els.player.src = item.url;
           resetPlayerSizing();
-          state.rotation = item.file ? (Number(savedRotations[fileCacheKey(item.file)]) || 0) : 0;
+          restoreRotationFor(item);
           applyRotation();
         }
         els.player.loop = false;
@@ -2313,7 +2349,7 @@
           if (Math.abs(deg - snapped) <= 3) deg = snapped;
           state.rotation = Math.round(deg * 10) / 10;
           applyRotation();
-          setStatus(`回転 ${state.rotation.toFixed(1)}°（ドラッグで調整、Shiftで微調整、ダブルクリックでリセット）`);
+          setStatus(`回転 ${state.rotation.toFixed(1)}°（ドラッグで調整、Shiftで微調整、ホイールで縮小／拡大、ダブルクリックでリセット）`);
         });
 
         function endRotateDrag(event) {
@@ -2327,12 +2363,24 @@
         els.videoWrap.addEventListener("pointerup", endRotateDrag);
         els.videoWrap.addEventListener("pointercancel", endRotateDrag);
 
+        els.videoWrap.addEventListener("wheel", event => {
+          if (!getCurrentFile()) return;
+          event.preventDefault();
+          const { zoom, minZoom } = effectiveZoom();
+          const next = Math.min(2, Math.max(minZoom, zoom * Math.exp(-event.deltaY * 0.0015)));
+          state.zoom = Math.round(next * 1000) / 1000;
+          applyRotation();
+          persistRotation();
+          setStatus(`回転 ${(state.rotation || 0).toFixed(1)}° / ズーム ${Math.round(state.zoom * 100)}%（100%＝自動拡大、最小で四隅まで表示）`);
+        }, { passive: false });
+
         els.videoWrap.addEventListener("dblclick", () => {
           if (!getCurrentFile()) return;
           state.rotation = 0;
+          state.zoom = 1;
           applyRotation();
           persistRotation();
-          setStatus("回転をリセットしました。");
+          setStatus("回転とズームをリセットしました。");
         });
 
         document.addEventListener("dragover", event => {
