@@ -100,9 +100,15 @@
       display: grid;
       place-items: center;
       overflow: hidden;
+      cursor: grab;
+      touch-action: none;
       background:
         radial-gradient(circle at 50% 50%, rgba(255,255,255,.04), transparent 50%),
         #000;
+    }
+
+    .video-wrap.rotating {
+      cursor: grabbing;
     }
 
     video#player {
@@ -806,12 +812,58 @@
         stepIndex: 0,
         uiVisible: true,
         overlayIdle: false,
-        idleTimer: null
+        idleTimer: null,
+        rotation: 0
       };
+
+      const ROTATION_STORAGE_KEY = "mp4LoopViewer.rotations.v1";
+      let savedRotations = loadRotations();
+
+      function loadRotations() {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(ROTATION_STORAGE_KEY) || "{}");
+          return parsed && typeof parsed === "object" ? parsed : {};
+        } catch (error) {
+          return {};
+        }
+      }
+
+      function persistRotation() {
+        const item = getCurrentFile();
+        if (!item || !item.file) return;
+        const key = fileCacheKey(item.file);
+        if (state.rotation) {
+          savedRotations[key] = Math.round(state.rotation * 10) / 10;
+        } else {
+          delete savedRotations[key];
+        }
+        try {
+          localStorage.setItem(ROTATION_STORAGE_KEY, JSON.stringify(savedRotations));
+        } catch (error) {
+          console.warn("Could not save rotation", error);
+        }
+      }
+
+      function applyRotation() {
+        const deg = state.rotation || 0;
+        if (!deg) {
+          els.player.style.transform = "";
+          return;
+        }
+        const videoWidth = els.player.videoWidth;
+        const videoHeight = els.player.videoHeight;
+        let cover = 1;
+        if (videoWidth && videoHeight) {
+          const rad = Math.abs(deg) * Math.PI / 180;
+          cover = Math.cos(rad) + Math.sin(rad) * Math.max(videoWidth / videoHeight, videoHeight / videoWidth);
+        }
+        els.player.style.transform = `rotate(${deg}deg) scale(${cover})`;
+      }
 
       const els = {
         app: document.getElementById("app"),
         stage: document.getElementById("stage"),
+        videoWrap: document.querySelector(".video-wrap"),
         player: document.getElementById("player"),
         fileInput: document.getElementById("fileInput"),
         appendInput: document.getElementById("appendInput"),
@@ -925,8 +977,10 @@
 
       function resetPlayback() {
         state.stepIndex = 0;
+        state.rotation = 0;
         els.player.removeAttribute("src");
         resetPlayerSizing();
+        els.player.style.transform = "";
         els.player.load();
         els.emptyState.style.display = "";
       }
@@ -1752,6 +1806,8 @@
         if (els.player.src !== item.url) {
           els.player.src = item.url;
           resetPlayerSizing();
+          state.rotation = item.file ? (Number(savedRotations[fileCacheKey(item.file)]) || 0) : 0;
+          applyRotation();
         }
         els.player.loop = false;
         if (restart) {
@@ -1785,6 +1841,7 @@
         els.player.style.aspectRatio = `${videoWidth} / ${videoHeight}`;
         els.player.style.width = `${displayWidth}px`;
         els.player.style.height = `${displayHeight}px`;
+        applyRotation();
       }
 
       function resetPlayerSizing() {
@@ -2221,6 +2278,62 @@
         window.addEventListener("resize", schedulePlayerFit);
         els.stage.addEventListener("mousemove", resetOverlayIdle);
         els.stage.addEventListener("click", resetOverlayIdle);
+
+        let rotateDrag = null;
+
+        function pointerAngleDeg(event, center) {
+          return Math.atan2(event.clientY - center.y, event.clientX - center.x) * 180 / Math.PI;
+        }
+
+        els.videoWrap.addEventListener("pointerdown", event => {
+          if (event.button !== 0 || !getCurrentFile()) return;
+          const rect = els.videoWrap.getBoundingClientRect();
+          const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+          if (Math.hypot(event.clientX - center.x, event.clientY - center.y) < 24) return;
+          rotateDrag = {
+            id: event.pointerId,
+            center,
+            startPointer: pointerAngleDeg(event, center),
+            startRotation: state.rotation || 0
+          };
+          els.videoWrap.setPointerCapture(event.pointerId);
+          els.videoWrap.classList.add("rotating");
+          event.preventDefault();
+        });
+
+        els.videoWrap.addEventListener("pointermove", event => {
+          if (!rotateDrag || event.pointerId !== rotateDrag.id) return;
+          const center = rotateDrag.center;
+          if (Math.hypot(event.clientX - center.x, event.clientY - center.y) < 12) return;
+          let delta = pointerAngleDeg(event, center) - rotateDrag.startPointer;
+          if (event.shiftKey) delta *= 0.15;
+          let deg = rotateDrag.startRotation + delta;
+          deg = ((deg + 180) % 360 + 360) % 360 - 180;
+          const snapped = Math.round(deg / 90) * 90;
+          if (Math.abs(deg - snapped) <= 3) deg = snapped;
+          state.rotation = Math.round(deg * 10) / 10;
+          applyRotation();
+          setStatus(`回転 ${state.rotation.toFixed(1)}°（ドラッグで調整、Shiftで微調整、ダブルクリックでリセット）`);
+        });
+
+        function endRotateDrag(event) {
+          if (!rotateDrag || event.pointerId !== rotateDrag.id) return;
+          rotateDrag = null;
+          els.videoWrap.classList.remove("rotating");
+          persistRotation();
+          setStatus(state.rotation ? `回転 ${state.rotation.toFixed(1)}°で固定しました。` : "回転をリセットしました。");
+        }
+
+        els.videoWrap.addEventListener("pointerup", endRotateDrag);
+        els.videoWrap.addEventListener("pointercancel", endRotateDrag);
+
+        els.videoWrap.addEventListener("dblclick", () => {
+          if (!getCurrentFile()) return;
+          state.rotation = 0;
+          applyRotation();
+          persistRotation();
+          setStatus("回転をリセットしました。");
+        });
 
         document.addEventListener("dragover", event => {
           event.preventDefault();
