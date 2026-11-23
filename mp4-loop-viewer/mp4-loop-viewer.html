@@ -332,6 +332,41 @@
       border-color: #a64c57;
     }
 
+    .remove-cut,
+    .redetect {
+      display: grid;
+      place-items: center;
+      height: 32px;
+      min-height: 32px;
+      padding: 0 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      background: transparent;
+      border: 1px solid rgba(255,255,255,.18);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .remove-cut {
+      color: #ffd9a8;
+    }
+
+    .remove-cut:hover {
+      color: #fff;
+      background: #4a341f;
+      border-color: #a67c4c;
+    }
+
+    .redetect {
+      color: #bcd7ff;
+    }
+
+    .redetect:hover {
+      color: #fff;
+      background: #22354f;
+      border-color: #4c74a6;
+    }
+
     .thumb {
       width: 68px;
       height: 68px;
@@ -895,6 +930,310 @@
         els.player.style.transform = (deg || scale !== 1) ? `rotate(${deg}deg) scale(${scale})` : "";
       }
 
+      // カット印：1ファイル内の場面転換位置。印で区切られた区間は別々の
+      // 「ファイル」（番号）として扱う。印はファイルごとに LocalStorage へ保存し、
+      // キーが存在すれば（空配列でも）検出済みとして扱う。
+      const CUTS_STORAGE_KEY = "mp4LoopViewer.cuts.v1";
+      let savedCuts = loadCuts();
+
+      function loadCuts() {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(CUTS_STORAGE_KEY) || "{}");
+          return parsed && typeof parsed === "object" ? parsed : {};
+        } catch (error) {
+          return {};
+        }
+      }
+
+      function persistCuts() {
+        try {
+          localStorage.setItem(CUTS_STORAGE_KEY, JSON.stringify(savedCuts));
+        } catch (error) {
+          console.warn("Could not save cuts", error);
+        }
+      }
+
+      function sourceItems(key) {
+        return state.files.filter(it => it.file && fileCacheKey(it.file) === key);
+      }
+
+      function displayName(item) {
+        return item.segCount > 1 ? `${item.name} [${item.segIndex + 1}/${item.segCount}]` : item.name;
+      }
+
+      function segmentItemsFor(template, marks, duration) {
+        const bounds = [0, ...marks, duration];
+        const count = bounds.length - 1;
+        const items = [];
+        for (let i = 0; i < count; i++) {
+          items.push({
+            file: template.file,
+            index: 0,
+            name: template.name,
+            url: template.url,
+            thumb: "",
+            thumbError: false,
+            sheet: "",
+            sheetError: false,
+            meta: template.meta || null,
+            loadError: "",
+            segStart: bounds[i],
+            segEnd: bounds[i + 1],
+            segIndex: i,
+            segCount: count,
+            cutsSettled: true
+          });
+        }
+        return items;
+      }
+
+      // 保存済みの印に合わせて、そのファイルの登録を区間アイテムへ組み替える。
+      // 再生中のプレイヤーには触らない（メディアは同一なので位置と停止状態は保たれる）。
+      function rebuildSourceSegments(key, durationHint) {
+        const at = state.files.findIndex(it => it.file && fileCacheKey(it.file) === key);
+        if (at < 0) return [];
+        const template = state.files[at];
+        const marks = Array.isArray(savedCuts[key]) ? savedCuts[key] : [];
+        let duration = durationHint || (template.meta ? template.meta.duration : 0);
+        if (!duration) {
+          const current = getCurrentFile();
+          if (current && current.file && fileCacheKey(current.file) === key && Number.isFinite(els.player.duration)) {
+            duration = els.player.duration;
+          }
+        }
+        const rest = state.files.filter(it => !(it.file && fileCacheKey(it.file) === key));
+        let insert;
+        if (marks.length && duration) {
+          insert = segmentItemsFor(template, marks, duration);
+        } else {
+          const stale = template.segCount > 1;
+          insert = [{
+            ...template,
+            segStart: 0,
+            segEnd: null,
+            segIndex: 0,
+            segCount: 1,
+            cutsSettled: true,
+            ...(stale ? { thumb: "", sheet: "", thumbError: false, sheetError: false } : {})
+          }];
+        }
+        rest.splice(at, 0, ...insert);
+        state.files = rest;
+        renumberFiles();
+        render();
+        return insert;
+      }
+
+      function probeDuration(item) {
+        return new Promise(resolve => {
+          const video = document.createElement("video");
+          const timer = window.setTimeout(() => done(0), 8000);
+          function done(value) {
+            window.clearTimeout(timer);
+            video.onloadedmetadata = null;
+            video.onerror = null;
+            video.removeAttribute("src");
+            try { video.load(); } catch (error) { /* noop */ }
+            resolve(value || 0);
+          }
+          video.muted = true;
+          video.playsInline = true;
+          video.preload = "metadata";
+          video.src = item.url;
+          video.onloadedmetadata = () => done(Number.isFinite(video.duration) ? video.duration : 0);
+          video.onerror = () => done(0);
+        });
+      }
+
+      // 場面転換の自動検出：小さなフレームを等間隔にサンプリングし、
+      // 連続フレームの平均差分が大きい位置をカット候補とする。
+      function detectCuts(item) {
+        return new Promise(resolve => {
+          const video = document.createElement("video");
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          let finished = false;
+          const overall = window.setTimeout(() => finish({ marks: [], duration: 0 }), 180000);
+          function finish(result) {
+            if (finished) return;
+            finished = true;
+            window.clearTimeout(overall);
+            video.onloadedmetadata = null;
+            video.onerror = null;
+            video.onseeked = null;
+            video.removeAttribute("src");
+            try { video.load(); } catch (error) { /* noop */ }
+            resolve(result);
+          }
+          video.muted = true;
+          video.playsInline = true;
+          video.preload = "auto";
+          video.src = item.url;
+          video.onerror = () => finish({ marks: [], duration: 0 });
+          video.onloadedmetadata = async () => {
+            const duration = video.duration;
+            if (!Number.isFinite(duration) || duration <= 1 || !video.videoWidth || !ctx) {
+              finish({ marks: [], duration: 0 });
+              return;
+            }
+            const W = 64;
+            const H = Math.max(8, Math.round(W * video.videoHeight / video.videoWidth));
+            canvas.width = W;
+            canvas.height = H;
+            const step = Math.max(0.4, duration / 600);
+            const times = [];
+            const diffs = [];
+            let prev = null;
+            const seek = t => new Promise(done => {
+              let settled = false;
+              const timer = window.setTimeout(() => { if (!settled) { settled = true; done(false); } }, 3000);
+              video.onseeked = () => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timer);
+                done(true);
+              };
+              try {
+                video.currentTime = Math.min(t, duration - .05);
+              } catch (error) {
+                window.clearTimeout(timer);
+                done(false);
+              }
+            });
+            for (let t = 0; t < duration; t += step) {
+              if (finished) return;
+              if (!await seek(t)) continue;
+              let data;
+              try {
+                ctx.drawImage(video, 0, 0, W, H);
+                data = ctx.getImageData(0, 0, W, H).data;
+              } catch (error) {
+                continue;
+              }
+              const gray = new Float32Array(W * H);
+              for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+                gray[j] = (data[i] + data[i + 1] + data[i + 2]) / 3;
+              }
+              if (prev) {
+                let sum = 0;
+                for (let j = 0; j < gray.length; j++) sum += Math.abs(gray[j] - prev[j]);
+                times.push(t);
+                diffs.push(sum / gray.length / 255);
+              }
+              prev = gray;
+            }
+            const sorted = diffs.slice().sort((a, b) => a - b);
+            const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
+            const threshold = Math.max(0.30, median * 3);
+            const marks = [];
+            for (let i = 0; i < diffs.length; i++) {
+              if (diffs[i] < threshold) continue;
+              const t = Math.round(times[i] * 10) / 10;
+              if (t < 0.5 || t > duration - 0.5) continue;
+              if (marks.length && t - marks[marks.length - 1] < 1.0) continue;
+              marks.push(t);
+            }
+            finish({ marks, duration });
+          };
+        });
+      }
+
+      // 初回読み込み時：保存済みの印があれば区間化し、無ければ自動検出してから区間化する。
+      async function settleItemCuts(item) {
+        item.cutsSettled = true;
+        const key = fileCacheKey(item.file);
+        let marks = Array.isArray(savedCuts[key]) ? savedCuts[key].slice() : null;
+        let duration = 0;
+        if (marks === null) {
+          setStatus(`カットを検出中… ${item.name}`);
+          const found = await detectCuts(item);
+          marks = found.marks;
+          duration = found.duration;
+          savedCuts[key] = marks.slice();
+          persistCuts();
+          if (marks.length) {
+            setStatus(`${item.name}：カットを${marks.length}件検出しました。`);
+          }
+        }
+        if (!marks.length) return [item];
+        if (!duration) duration = await probeDuration(item);
+        if (!duration) return [item];
+        const insert = rebuildSourceSegments(key, duration);
+        return insert.length ? insert : [item];
+      }
+
+      function formatTimeFine(seconds) {
+        const s = Math.max(0, seconds || 0);
+        return `${formatClock(s)}.${Math.floor((s - Math.floor(s)) * 10)}`;
+      }
+
+      function togglePlayPause() {
+        if (!getCurrentFile()) return;
+        if (els.player.paused) {
+          els.player.play().catch(() => {});
+          setStatus("再生");
+        } else {
+          els.player.pause();
+          setStatus(`一時停止 ${formatTimeFine(els.player.currentTime)}（←→でコマ送り、Cでカット印）`);
+        }
+      }
+
+      function stepFrame(direction) {
+        if (!getCurrentFile()) return;
+        els.player.pause();
+        const dur = Number.isFinite(els.player.duration) ? els.player.duration : 0;
+        const t = Math.min(Math.max(els.player.currentTime + direction / 30, 0), dur || Infinity);
+        try {
+          els.player.currentTime = t;
+        } catch (error) { /* noop */ }
+        setStatus(`コマ送り ${formatTimeFine(t)}（Cでカット印、Spaceで再生）`);
+      }
+
+      function addCutMarkAtCurrentTime() {
+        const item = getCurrentFile();
+        if (!item || !item.file) {
+          setStatus("カット印を付ける動画が再生されていません。", true);
+          return;
+        }
+        const key = fileCacheKey(item.file);
+        const t = Math.round(els.player.currentTime * 10) / 10;
+        const dur = Number.isFinite(els.player.duration) ? els.player.duration : (item.meta ? item.meta.duration : 0);
+        const marks = Array.isArray(savedCuts[key]) ? savedCuts[key].slice() : [];
+        const edges = [0, ...marks, ...(dur ? [dur] : [])];
+        if (edges.some(edge => Math.abs(edge - t) < 1.0)) {
+          setStatus("カット印が近すぎます（既存の印・開始・終了から1秒以上あけてください）。", true);
+          return;
+        }
+        marks.push(t);
+        marks.sort((a, b) => a - b);
+        savedCuts[key] = marks;
+        persistCuts();
+        const insert = rebuildSourceSegments(key);
+        if (insert.length) generateThumbnails(insert);
+        setStatus(`カット印を追加しました（${formatTimeFine(t)}）。このファイルは${Math.max(1, sourceItems(key).length)}区間になりました。`);
+      }
+
+      function removeCutMark(key, time) {
+        const marks = (Array.isArray(savedCuts[key]) ? savedCuts[key] : []).filter(t => Math.abs(t - time) > 0.05);
+        savedCuts[key] = marks;
+        persistCuts();
+        const insert = rebuildSourceSegments(key);
+        if (insert.length) generateThumbnails(insert);
+        setStatus(marks.length ? `カット印を削除しました（残り${marks.length}件）。` : "カット印をすべて削除し、1ファイルに戻しました。");
+      }
+
+      async function redetectCuts(key) {
+        const item = sourceItems(key)[0];
+        if (!item) return;
+        setStatus(`カットを再検出中… ${item.name}`);
+        const found = await detectCuts(item);
+        savedCuts[key] = found.marks.slice();
+        persistCuts();
+        const insert = rebuildSourceSegments(key, found.duration);
+        if (insert.length) generateThumbnails(insert);
+        setStatus(found.marks.length ? `${item.name}：カットを${found.marks.length}件検出しました。` : `${item.name}：カットは検出されませんでした。`);
+      }
+
       const els = {
         app: document.getElementById("app"),
         stage: document.getElementById("stage"),
@@ -1000,7 +1339,12 @@
           sheet: "",
           sheetError: false,
           meta: null,
-          loadError: ""
+          loadError: "",
+          segStart: 0,
+          segEnd: null,
+          segIndex: 0,
+          segCount: 1,
+          cutsSettled: false
         }));
       }
 
@@ -1057,8 +1401,11 @@
         const removed = state.files[fileIndex];
         if (!removed) return;
 
+        const key = removed.file ? fileCacheKey(removed.file) : null;
         URL.revokeObjectURL(removed.url);
-        state.files.splice(fileIndex, 1);
+        state.files = key
+          ? state.files.filter(it => !(it.file && fileCacheKey(it.file) === key))
+          : state.files.filter(it => it !== removed);
         renumberFiles();
 
         if (!state.files.length) {
@@ -1097,21 +1444,28 @@
       async function generateThumbnails(items) {
         for (const item of items) {
           if (!state.files.includes(item)) continue;
-          try {
-            if (!item.thumb) item.thumb = await createThumbnail(item);
-          } catch (error) {
-            item.thumbError = true;
-            console.warn("Thumbnail failed", item.name, error);
+          let targets = [item];
+          if (item.segCount === 1 && !item.cutsSettled) {
+            targets = await settleItemCuts(item);
           }
-          render();
-          if (!state.files.includes(item)) continue;
-          try {
-            if (!item.sheet) await getContactSheet(item);
-          } catch (error) {
-            item.sheetError = true;
-            console.warn("Contact sheet failed", item.name, error);
+          for (const target of targets) {
+            if (!state.files.includes(target)) continue;
+            try {
+              if (!target.thumb) target.thumb = await createThumbnail(target);
+            } catch (error) {
+              target.thumbError = true;
+              console.warn("Thumbnail failed", target.name, error);
+            }
+            render();
+            if (!state.files.includes(target)) continue;
+            try {
+              if (!target.sheet) await getContactSheet(target);
+            } catch (error) {
+              target.sheetError = true;
+              console.warn("Contact sheet failed", target.name, error);
+            }
+            render();
           }
-          render();
         }
       }
 
@@ -1137,6 +1491,8 @@
           const overallTimeout = window.setTimeout(() => cleanup(() => reject(new Error("sheet timeout"))), 45000);
           let cellH = 180;
           let duration = 0;
+          let winStart = 0;
+          let winEnd = 0;
 
           video.muted = true;
           video.playsInline = true;
@@ -1158,13 +1514,15 @@
               return;
             }
             item.meta = { duration, width: video.videoWidth, height: video.videoHeight };
+            winStart = item.segStart || 0;
+            winEnd = item.segEnd != null ? Math.min(item.segEnd, duration) : duration;
             cellH = Math.max(90, Math.round(CELL_W * video.videoHeight / video.videoWidth));
             canvas.width = PAD * 2 + COLS * CELL_W + (COLS - 1) * GAP;
             canvas.height = PAD * 2 + HEADER_H + ROWS * cellH + (ROWS - 1) * GAP;
             drawHeader();
             try {
               for (let i = 0; i < COLS * ROWS; i++) {
-                const t = duration * (i + .5) / (COLS * ROWS);
+                const t = winStart + (winEnd - winStart) * (i + .5) / (COLS * ROWS);
                 await seekTo(video, t);
                 drawCell(i, t);
               }
@@ -1186,7 +1544,11 @@
             ctx.fillText(`ファイル名: ${item.name}`, PAD, PAD);
             ctx.font = "16px 'Segoe UI', sans-serif";
             ctx.fillText(`ファイル サイズ: ${sizeMb} MB`, PAD, PAD + 24);
-            ctx.fillText(`解像度: ${video.videoWidth}x${video.videoHeight}  再生時間: ${formatClock(duration)}`, PAD, PAD + 44);
+            if (item.segCount > 1) {
+              ctx.fillText(`解像度: ${video.videoWidth}x${video.videoHeight}  区間: ${formatClock(winStart)} – ${formatClock(winEnd)}（全${formatClock(duration)}・${item.segIndex + 1}/${item.segCount}）`, PAD, PAD + 44);
+            } else {
+              ctx.fillText(`解像度: ${video.videoWidth}x${video.videoHeight}  再生時間: ${formatClock(duration)}`, PAD, PAD + 44);
+            }
           }
 
           function drawCell(i, t) {
@@ -1272,6 +1634,12 @@
         return `v1|${file.name}|${file.size}|${file.lastModified}`;
       }
 
+      // コンタクトシートのキャッシュキー。区間アイテムは範囲も含めて区別する。
+      function sheetKeyFor(item) {
+        const base = fileCacheKey(item.file);
+        return item.segCount > 1 ? `${base}|seg:${item.segStart}-${item.segEnd}` : base;
+      }
+
       function blobToDataUrl(blob) {
         return new Promise(resolve => {
           const reader = new FileReader();
@@ -1281,12 +1649,12 @@
         });
       }
 
-      async function cacheGetSheet(file) {
+      async function cacheGetSheet(key) {
         const db = await sheetCacheDb();
         if (!db) return null;
         const rec = await new Promise(resolve => {
           try {
-            const rq = db.transaction("sheets", "readonly").objectStore("sheets").get(fileCacheKey(file));
+            const rq = db.transaction("sheets", "readonly").objectStore("sheets").get(key);
             rq.onsuccess = () => resolve(rq.result || null);
             rq.onerror = () => resolve(null);
           } catch (error) {
@@ -1298,11 +1666,11 @@
         return dataUrl ? { dataUrl, meta: rec.meta || null, blob: rec.blob } : null;
       }
 
-      async function cachePutSheet(file, blob, meta) {
+      async function cachePutSheet(key, blob, meta) {
         const db = await sheetCacheDb();
         if (!db || !blob) return;
         try {
-          const record = { key: fileCacheKey(file), blob, meta, savedAt: Date.now() };
+          const record = { key, blob, meta, savedAt: Date.now() };
           let stored = await cacheStoreRecord(db, record);
           if (!stored) {
             // 容量不足の可能性があるので古いものをまとめて空けて1回だけ再試行する
@@ -1373,20 +1741,21 @@
 
       async function getContactSheet(item) {
         if (item.sheet) return item.sheet;
+        const key = sheetKeyFor(item);
         // 1) 同一フォルダのキャッシュファイルを最優先で読む
-        const fromFolder = await folderCacheGet(item.file);
+        const fromFolder = await folderCacheGet(key);
         if (fromFolder) {
           item.meta = fromFolder.meta;
           item.sheet = fromFolder.dataUrl;
           return item.sheet;
         }
         // 2) ブラウザ内キャッシュ（IndexedDB）
-        const cached = await cacheGetSheet(item.file);
+        const cached = await cacheGetSheet(key);
         if (cached) {
           item.meta = cached.meta;
           item.sheet = cached.dataUrl;
           if (cached.blob) {
-            folderCachePut(item.file, cached.blob, item.meta);
+            folderCachePut(key, cached.blob, item.meta, item.file.size);
           }
           return item.sheet;
         }
@@ -1394,8 +1763,8 @@
         const made = await createContactSheet(item);
         item.sheet = made.dataUrl;
         if (made.blob) {
-          cachePutSheet(item.file, made.blob, item.meta);
-          folderCachePut(item.file, made.blob, item.meta);
+          cachePutSheet(key, made.blob, item.meta);
+          folderCachePut(key, made.blob, item.meta, item.file.size);
         }
         return item.sheet;
       }
@@ -1415,8 +1784,8 @@
         return (h >>> 0).toString(16).padStart(8, "0");
       }
 
-      function sheetFileName(file) {
-        return `${fnv1a(fileCacheKey(file))}-${file.size}.jpg`;
+      function sheetFileName(key, size) {
+        return `${fnv1a(key)}-${size}.jpg`;
       }
 
       async function folderCacheDir(create) {
@@ -1451,7 +1820,7 @@
 
       async function pruneFolderCache(items) {
         if (!folderCache.dir) return;
-        const keys = new Set(items.map(item => fileCacheKey(item.file)));
+        const keys = new Set(items.map(item => sheetKeyFor(item)));
         let changed = false;
         for (const [key, entry] of Array.from(folderCache.index)) {
           if (keys.has(key)) continue;
@@ -1468,8 +1837,8 @@
         }
       }
 
-      async function folderCacheGet(file) {
-        const entry = folderCache.index.get(fileCacheKey(file));
+      async function folderCacheGet(key) {
+        const entry = folderCache.index.get(key);
         if (!entry) return null;
         const dir = await folderCacheDir(false);
         if (!dir) return null;
@@ -1483,7 +1852,7 @@
         }
       }
 
-      async function folderCachePut(file, blob, meta) {
+      async function folderCachePut(key, blob, meta, sizeHint) {
         if (!folderCache.writable || !folderCache.root || !blob) return;
         try {
           const dir = await folderCacheDir(true);
@@ -1491,12 +1860,12 @@
             folderCache.writable = false;
             return;
           }
-          const name = sheetFileName(file);
+          const name = sheetFileName(key, sizeHint || blob.size);
           const fh = await dir.getFileHandle(name, { create: true });
           const writable = await fh.createWritable();
           await writable.write(blob);
           await writable.close();
-          folderCache.index.set(fileCacheKey(file), { f: name, meta });
+          folderCache.index.set(key, { f: name, meta });
           scheduleFolderCacheIndexSave();
         } catch (error) {
           folderCache.writable = false;
@@ -1771,21 +2140,21 @@
 
           video.onerror = () => cleanup(() => reject(new Error("load error")));
           video.onloadedmetadata = () => {
-            const target = Number.isFinite(video.duration) && video.duration > .15 ? .1 : 0;
-            if (target === 0 && video.readyState >= 2) {
+            const start = item.segStart || 0;
+            const end = item.segEnd != null ? item.segEnd : video.duration;
+            const target = Number.isFinite(end) && end - start > .15 ? start + .1 : start;
+            if (target === start && video.readyState >= 2) {
               draw();
               return;
             }
             try {
-              if (target > 0) {
-                video.currentTime = target;
-              }
+              video.currentTime = target;
             } catch (error) {
               draw();
             }
           };
           video.onloadeddata = () => {
-            if (video.currentTime === 0) {
+            if (video.currentTime <= (item.segStart || 0) + .01) {
               draw();
             }
           };
@@ -1848,7 +2217,7 @@
         els.player.loop = false;
         if (restart) {
           try {
-            els.player.currentTime = 0;
+            els.player.currentTime = item.segStart || 0;
           } catch (error) {
             console.warn("Could not reset currentTime", error);
           }
@@ -1969,15 +2338,23 @@
             <span class="num">${item.index}</span>
             ${renderThumb(item, "thumb")}
             <div class="file-meta">
-              <div class="file-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
+              <div class="file-name" title="${escapeHtml(item.name)}">${escapeHtml(displayName(item))}</div>
               <div class="file-note">${escapeHtml(fileNote(item))}</div>
             </div>
-            <button type="button" class="remove-file" data-index="${item.index - 1}" title="登録解除" aria-label="${escapeHtml(item.name)} の登録解除">×</button>
+            ${item.segIndex > 0 ? `<button type="button" class="remove-cut" data-key="${escapeHtml(fileCacheKey(item.file))}" data-time="${item.segStart}" title="このカット印を削除して前後の区間を結合">✂×</button>` : ""}
+            ${item.segIndex === 0 ? `<button type="button" class="redetect" data-key="${escapeHtml(fileCacheKey(item.file))}" title="カット印を自動で検出し直す">再検出</button>` : ""}
+            <button type="button" class="remove-file" data-index="${item.index - 1}" title="登録解除（区間に分かれている場合はファイルごと）" aria-label="${escapeHtml(item.name)} の登録解除">×</button>
             ${item.sheet ? `<img class="sheet" src="${item.sheet}" data-index="${item.index - 1}" alt="${escapeHtml(item.name)} のプレビュー" title="クリックで拡大">` : ""}
           </li>
         `).join("");
         els.fileList.querySelectorAll(".remove-file").forEach(button => {
           button.addEventListener("click", () => removeFile(Number(button.dataset.index)));
+        });
+        els.fileList.querySelectorAll(".remove-cut").forEach(button => {
+          button.addEventListener("click", () => removeCutMark(button.dataset.key, Number(button.dataset.time)));
+        });
+        els.fileList.querySelectorAll(".redetect").forEach(button => {
+          button.addEventListener("click", () => redetectCuts(button.dataset.key));
         });
         els.fileList.querySelectorAll(".sheet").forEach(img => {
           img.addEventListener("click", () => openSheetView(state.files, Number(img.dataset.index), "files"));
@@ -1985,6 +2362,13 @@
       }
 
       function fileNote(item) {
+        if (item.segCount > 1) {
+          const range = `${formatClock(item.segStart)} – ${formatClock(item.segEnd)}`;
+          if (item.thumbError && item.sheetError) return `${range} ・ サムネイル生成失敗`;
+          if (item.meta) return `${range} ・ 全体 ${formatClock(item.meta.duration)}`;
+          if (item.sheetError) return `${range} ・ プレビュー生成失敗`;
+          return `${range} ・ プレビュー生成中…`;
+        }
         if (item.thumbError && item.sheetError) return "サムネイル生成失敗";
         if (item.meta) return `${formatClock(item.meta.duration)} ・ ${item.meta.width}x${item.meta.height}`;
         if (item.sheetError) return "プレビュー生成失敗";
@@ -2047,7 +2431,7 @@
           els.sheetModalImg.removeAttribute("src");
           els.sheetModalImg.style.display = "none";
         }
-        let caption = `${item.name}（${sheetView.index + 1} / ${sheetView.list.length}）`;
+        let caption = `${displayName(item)}（${sheetView.index + 1} / ${sheetView.list.length}）`;
         if (sheetView.context === "picker") {
           const order = picker.selected.indexOf(item);
           caption += order >= 0 ? ` ・ 選択中（${order + 1}番目に登録）` : " ・ 未選択";
@@ -2182,7 +2566,7 @@
         }
         const { raw, steps } = parseLoop(state.activeLoop);
         const videoNumber = steps[state.stepIndex];
-        els.nowPlaying.textContent = `現在再生中: ${videoNumber}: ${item.name}`;
+        els.nowPlaying.textContent = `現在再生中: ${videoNumber}: ${displayName(item)}`;
         els.nowLoop.textContent = `ループ: キー${state.activeLoop} (${raw}) step ${state.stepIndex + 1}/${steps.length}`;
       }
 
@@ -2237,6 +2621,18 @@
           requestFullscreen();
         } else if (event.key === "Escape") {
           exitFullscreen();
+        } else if (event.code === "Space" || event.key === " ") {
+          event.preventDefault();
+          togglePlayPause();
+        } else if (event.key === "ArrowRight") {
+          event.preventDefault();
+          stepFrame(1);
+        } else if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          stepFrame(-1);
+        } else if (event.key.toLowerCase() === "c" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          event.preventDefault();
+          addCutMarkAtCurrentTime();
         } else if (event.key.toLowerCase() === "h") {
           event.preventDefault();
           toggleUi();
@@ -2299,6 +2695,14 @@
         els.toggleUiButton.addEventListener("click", toggleUi);
         els.player.addEventListener("loadedmetadata", schedulePlayerFit);
         els.player.addEventListener("ended", playNextStep);
+        window.setInterval(() => {
+          const item = getCurrentFile();
+          if (!item || item.segEnd == null) return;
+          if (els.player.paused || els.player.ended) return;
+          const dur = els.player.duration;
+          if (Number.isFinite(dur) && item.segEnd >= dur - .05) return;
+          if (els.player.currentTime >= item.segEnd - .01) playNextStep();
+        }, 50);
         els.player.addEventListener("error", () => {
           const item = getCurrentFile();
           if (item) {
