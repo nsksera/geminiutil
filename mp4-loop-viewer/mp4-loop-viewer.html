@@ -351,6 +351,155 @@
       overflow: hidden;
     }
 
+    .sheet {
+      grid-column: 1 / -1;
+      display: block;
+      width: 100%;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,.12);
+      cursor: zoom-in;
+      background: #e9e9e9;
+    }
+
+    .sheet-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: rgba(0, 0, 0, .88);
+      cursor: zoom-out;
+    }
+
+    .sheet-modal[hidden] {
+      display: none;
+    }
+
+    .sheet-modal figure {
+      margin: 0;
+      display: grid;
+      gap: 10px;
+      justify-items: center;
+      max-width: 94vw;
+      max-height: 94vh;
+    }
+
+    .sheet-modal img {
+      max-width: 94vw;
+      max-height: 88vh;
+      object-fit: contain;
+      border-radius: 6px;
+      box-shadow: var(--shadow);
+    }
+
+    .sheet-modal figcaption {
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .sheet-modal-hint {
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .picker {
+      position: fixed;
+      inset: 0;
+      z-index: 55;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      background: rgba(5, 6, 7, .97);
+      padding: 18px;
+      gap: 14px;
+    }
+
+    .picker[hidden] {
+      display: none;
+    }
+
+    .picker-head,
+    .picker-foot {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .picker-head .title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-right: auto;
+    }
+
+    .picker-grid {
+      overflow: auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 12px;
+      align-content: start;
+      padding-right: 4px;
+    }
+
+    .pick-card {
+      position: relative;
+      display: grid;
+      gap: 7px;
+      padding: 8px;
+      border: 2px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      cursor: pointer;
+      text-align: left;
+      color: var(--text);
+    }
+
+    .pick-card.selected {
+      border-color: var(--line-strong);
+      background: #142133;
+    }
+
+    .pick-card .sheet {
+      cursor: pointer;
+    }
+
+    .pick-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+    }
+
+    .pick-note {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .pick-order {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      display: grid;
+      place-items: center;
+      min-width: 30px;
+      height: 30px;
+      padding: 0 6px;
+      border-radius: 999px;
+      background: var(--line-strong);
+      color: #06121f;
+      font-weight: 800;
+      font-size: 15px;
+      box-shadow: var(--shadow);
+    }
+
+    .pick-expand {
+      justify-self: end;
+      min-height: 28px;
+      padding: 0 10px;
+      font-size: 12px;
+    }
+
     .loop-editors {
       display: grid;
       gap: 7px;
@@ -564,8 +713,10 @@
       <section class="section">
         <div class="section-title">Files</div>
         <input id="appendInput" class="hidden-input" type="file" multiple accept="video/mp4,video/*" aria-hidden="true" tabindex="-1">
+        <input id="folderInput" class="hidden-input" type="file" webkitdirectory aria-hidden="true" tabindex="-1">
         <input id="fileInput" class="file-input" type="file" multiple accept="video/mp4,video/*">
         <div class="actions">
+          <button id="folderButton" type="button">フォルダから選ぶ</button>
           <button id="appendButton" type="button">追加読込</button>
           <button id="clearFilesButton" type="button">全登録解除</button>
           <button id="fullscreenButton" type="button">フルスクリーン</button>
@@ -611,6 +762,28 @@
     </section>
   </main>
 
+  <div id="sheetModal" class="sheet-modal" hidden>
+    <figure>
+      <img id="sheetModalImg" alt="コンタクトシート">
+      <figcaption id="sheetModalCaption"></figcaption>
+      <div class="sheet-modal-hint">← → ：前後の動画　Space：選択の切り替え（フォルダから選ぶ時）　クリック / Esc：閉じる</div>
+    </figure>
+  </div>
+
+  <div id="picker" class="picker" hidden>
+    <div class="picker-head">
+      <span class="title">フォルダから選ぶ</span>
+      <span id="pickerStatus" class="status"></span>
+    </div>
+    <div id="pickerGrid" class="picker-grid"></div>
+    <div class="picker-foot">
+      <button id="pickerSelectAll" type="button">すべて選択</button>
+      <button id="pickerClear" type="button">選択解除</button>
+      <button id="pickerRegister" type="button">選択した動画を登録</button>
+      <button id="pickerCancel" type="button">キャンセル</button>
+    </div>
+  </div>
+
   <script>
     (() => {
       const STORAGE_KEY = "mp4LoopViewer.v1";
@@ -655,7 +828,19 @@
         nowPlaying: document.getElementById("nowPlaying"),
         nowLoop: document.getElementById("nowLoop"),
         overlay: document.getElementById("overlay"),
-        emptyState: document.getElementById("emptyState")
+        emptyState: document.getElementById("emptyState"),
+        sheetModal: document.getElementById("sheetModal"),
+        sheetModalImg: document.getElementById("sheetModalImg"),
+        sheetModalCaption: document.getElementById("sheetModalCaption"),
+        folderInput: document.getElementById("folderInput"),
+        folderButton: document.getElementById("folderButton"),
+        picker: document.getElementById("picker"),
+        pickerGrid: document.getElementById("pickerGrid"),
+        pickerStatus: document.getElementById("pickerStatus"),
+        pickerSelectAll: document.getElementById("pickerSelectAll"),
+        pickerClear: document.getElementById("pickerClear"),
+        pickerRegister: document.getElementById("pickerRegister"),
+        pickerCancel: document.getElementById("pickerCancel")
       };
 
       function loadSettings() {
@@ -725,6 +910,9 @@
           url: URL.createObjectURL(file),
           thumb: "",
           thumbError: false,
+          sheet: "",
+          sheetError: false,
+          meta: null,
           loadError: ""
         }));
       }
@@ -744,12 +932,17 @@
       }
 
       function acceptFiles(fileList, mode = "replace") {
+        closeSheetModal();
         const slots = Math.max(0, 99 - (mode === "append" ? state.files.length : 0));
         const nextItems = createFileItems(fileList, mode === "append" ? state.files.length + 1 : 1).slice(0, slots);
+        applyLoadedItems(nextItems, mode);
+      }
 
+      function applyLoadedItems(nextItems, mode) {
         if (mode === "replace") {
           revokeFiles();
           state.files = nextItems;
+          renumberFiles();
           resetPlayback();
         } else if (nextItems.length) {
           state.files = state.files.concat(nextItems);
@@ -769,6 +962,7 @@
       }
 
       function removeFile(fileIndex) {
+        closeSheetModal();
         const current = getCurrentFile();
         const removed = state.files[fileIndex];
         if (!removed) return;
@@ -795,6 +989,7 @@
       }
 
       function clearFiles() {
+        closeSheetModal();
         if (!state.files.length) {
           setStatus("解除する動画登録がありません。", true);
           return;
@@ -813,13 +1008,411 @@
         for (const item of items) {
           if (!state.files.includes(item)) continue;
           try {
-            item.thumb = await createThumbnail(item);
+            if (!item.thumb) item.thumb = await createThumbnail(item);
           } catch (error) {
             item.thumbError = true;
             console.warn("Thumbnail failed", item.name, error);
           }
           render();
+          if (!state.files.includes(item)) continue;
+          try {
+            if (!item.sheet) await getContactSheet(item);
+          } catch (error) {
+            item.sheetError = true;
+            console.warn("Contact sheet failed", item.name, error);
+          }
+          render();
         }
+      }
+
+      function formatClock(seconds) {
+        const total = Math.max(0, Math.floor(seconds || 0));
+        const h = String(Math.floor(total / 3600)).padStart(2, "0");
+        const m = String(Math.floor((total % 3600) / 60)).padStart(2, "0");
+        const s = String(total % 60).padStart(2, "0");
+        return `${h}:${m}:${s}`;
+      }
+
+      function createContactSheet(item) {
+        const COLS = 4;
+        const ROWS = 4;
+        const CELL_W = 320;
+        const GAP = 6;
+        const PAD = 8;
+        const HEADER_H = 66;
+        return new Promise((resolve, reject) => {
+          const video = document.createElement("video");
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+          const overallTimeout = window.setTimeout(() => cleanup(() => reject(new Error("sheet timeout"))), 45000);
+          let cellH = 180;
+          let duration = 0;
+
+          video.muted = true;
+          video.playsInline = true;
+          video.preload = "auto";
+          video.src = item.url;
+
+          function cleanup(done) {
+            window.clearTimeout(overallTimeout);
+            video.onloadedmetadata = null;
+            video.onerror = null;
+            done();
+          }
+
+          video.onerror = () => cleanup(() => reject(new Error("load error")));
+          video.onloadedmetadata = async () => {
+            duration = video.duration;
+            if (!Number.isFinite(duration) || duration <= 0 || !video.videoWidth || !video.videoHeight) {
+              cleanup(() => reject(new Error("metadata unavailable")));
+              return;
+            }
+            item.meta = { duration, width: video.videoWidth, height: video.videoHeight };
+            cellH = Math.max(90, Math.round(CELL_W * video.videoHeight / video.videoWidth));
+            canvas.width = PAD * 2 + COLS * CELL_W + (COLS - 1) * GAP;
+            canvas.height = PAD * 2 + HEADER_H + ROWS * cellH + (ROWS - 1) * GAP;
+            drawHeader();
+            try {
+              for (let i = 0; i < COLS * ROWS; i++) {
+                const t = duration * (i + .5) / (COLS * ROWS);
+                await seekTo(video, t);
+                drawCell(i, t);
+              }
+              canvas.toBlob(blob => {
+                cleanup(() => resolve({ dataUrl: canvas.toDataURL("image/jpeg", .85), blob }));
+              }, "image/jpeg", .85);
+            } catch (error) {
+              cleanup(() => reject(error));
+            }
+          };
+
+          function drawHeader() {
+            ctx.fillStyle = "#e9e9e9";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "#111";
+            ctx.font = "600 19px 'Segoe UI', sans-serif";
+            ctx.textBaseline = "top";
+            const sizeMb = (item.file.size / 1048576).toFixed(2);
+            ctx.fillText(`ファイル名: ${item.name}`, PAD, PAD);
+            ctx.font = "16px 'Segoe UI', sans-serif";
+            ctx.fillText(`ファイル サイズ: ${sizeMb} MB`, PAD, PAD + 24);
+            ctx.fillText(`解像度: ${video.videoWidth}x${video.videoHeight}  再生時間: ${formatClock(duration)}`, PAD, PAD + 44);
+          }
+
+          function drawCell(i, t) {
+            const col = i % COLS;
+            const row = Math.floor(i / COLS);
+            const x = PAD + col * (CELL_W + GAP);
+            const y = PAD + HEADER_H + row * (cellH + GAP);
+            ctx.fillStyle = "#000";
+            ctx.fillRect(x, y, CELL_W, cellH);
+            const vw = video.videoWidth;
+            const vh = video.videoHeight;
+            const scale = Math.max(CELL_W / vw, cellH / vh);
+            const dw = vw * scale;
+            const dh = vh * scale;
+            ctx.drawImage(video, x + (CELL_W - dw) / 2, y + (cellH - dh) / 2, dw, dh);
+            const label = formatClock(t);
+            ctx.font = "700 17px 'Segoe UI', sans-serif";
+            const tw = ctx.measureText(label).width;
+            const lx = x + CELL_W - tw - 12;
+            const ly = y + cellH - 24;
+            ctx.fillStyle = "rgba(0, 0, 0, .55)";
+            ctx.fillRect(lx - 4, ly - 3, tw + 8, 23);
+            ctx.fillStyle = "#fff";
+            ctx.textBaseline = "top";
+            ctx.fillText(label, lx, ly);
+          }
+
+          function seekTo(targetVideo, time) {
+            return new Promise(done => {
+              let settled = false;
+              const timer = window.setTimeout(finish, 4000);
+              function finish() {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timer);
+                targetVideo.onseeked = null;
+                done();
+              }
+              targetVideo.onseeked = finish;
+              try {
+                targetVideo.currentTime = Math.min(Math.max(time, 0), Math.max(duration - .05, 0));
+              } catch (error) {
+                finish();
+              }
+            });
+          }
+        });
+      }
+
+      // プレビュー（コンタクトシート）の永続キャッシュ。ファイル名＋サイズ＋更新日時をキーに
+      // IndexedDBへ保存し、同じファイルを再度選んだときは生成を省略する。
+      const sheetCache = { db: null, failed: false };
+      const SHEET_CACHE_MAX = 300;
+
+      function sheetCacheDb() {
+        if (sheetCache.failed) return Promise.resolve(null);
+        if (sheetCache.db) return Promise.resolve(sheetCache.db);
+        return new Promise(resolve => {
+          let req;
+          try {
+            req = indexedDB.open("mp4-loop-viewer", 1);
+          } catch (error) {
+            sheetCache.failed = true;
+            resolve(null);
+            return;
+          }
+          req.onupgradeneeded = () => {
+            req.result.createObjectStore("sheets", { keyPath: "key" });
+          };
+          req.onsuccess = () => {
+            sheetCache.db = req.result;
+            resolve(sheetCache.db);
+          };
+          req.onerror = () => {
+            sheetCache.failed = true;
+            resolve(null);
+          };
+        });
+      }
+
+      function fileCacheKey(file) {
+        return `v1|${file.name}|${file.size}|${file.lastModified}`;
+      }
+
+      async function cacheGetSheet(file) {
+        const db = await sheetCacheDb();
+        if (!db) return null;
+        const rec = await new Promise(resolve => {
+          try {
+            const rq = db.transaction("sheets", "readonly").objectStore("sheets").get(fileCacheKey(file));
+            rq.onsuccess = () => resolve(rq.result || null);
+            rq.onerror = () => resolve(null);
+          } catch (error) {
+            resolve(null);
+          }
+        });
+        if (!rec || !rec.blob) return null;
+        const dataUrl = await new Promise(resolve => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(rec.blob);
+        });
+        return dataUrl ? { dataUrl, meta: rec.meta || null } : null;
+      }
+
+      async function cachePutSheet(file, blob, meta) {
+        const db = await sheetCacheDb();
+        if (!db || !blob) return;
+        try {
+          await new Promise(resolve => {
+            const tx = db.transaction("sheets", "readwrite");
+            tx.objectStore("sheets").put({ key: fileCacheKey(file), blob, meta, savedAt: Date.now() });
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+          });
+          const all = await new Promise(resolve => {
+            const rq = db.transaction("sheets", "readonly").objectStore("sheets").getAll();
+            rq.onsuccess = () => resolve(rq.result || []);
+            rq.onerror = () => resolve([]);
+          });
+          if (all.length > SHEET_CACHE_MAX) {
+            const excess = all.slice().sort((a, b) => a.savedAt - b.savedAt).slice(0, all.length - SHEET_CACHE_MAX);
+            const tx = db.transaction("sheets", "readwrite");
+            const store = tx.objectStore("sheets");
+            for (const rec of excess) store.delete(rec.key);
+          }
+        } catch (error) {
+          console.warn("Sheet cache write failed", error);
+        }
+      }
+
+      async function getContactSheet(item) {
+        if (item.sheet) return item.sheet;
+        const cached = await cacheGetSheet(item.file);
+        if (cached) {
+          item.meta = cached.meta;
+          item.sheet = cached.dataUrl;
+          return item.sheet;
+        }
+        const made = await createContactSheet(item);
+        item.sheet = made.dataUrl;
+        if (made.blob) {
+          cachePutSheet(item.file, made.blob, item.meta);
+        }
+        return item.sheet;
+      }
+
+      const picker = {
+        candidates: [],
+        selected: [],
+        queue: [],
+        processing: false,
+        observer: null
+      };
+
+      function isPickerOpen() {
+        return !els.picker.hidden;
+      }
+
+      function openPicker(fileList) {
+        closePicker();
+        const videos = Array.from(fileList)
+          .filter(file => file.type.startsWith("video/") || /\.mp4$/i.test(file.name))
+          .sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name, "ja"));
+        if (!videos.length) {
+          setStatus("フォルダ内に動画ファイルがありませんでした。", true);
+          return;
+        }
+        picker.candidates = videos.map(file => ({
+          file,
+          name: file.name,
+          relPath: file.webkitRelativePath || file.name,
+          url: URL.createObjectURL(file),
+          thumb: "",
+          thumbError: false,
+          sheet: "",
+          sheetError: false,
+          meta: null,
+          queued: false,
+          loadError: ""
+        }));
+        picker.selected = [];
+        els.picker.hidden = false;
+        renderPicker();
+        setupPickerObserver();
+        updatePickerStatus();
+      }
+
+      function closePicker() {
+        if (picker.observer) {
+          picker.observer.disconnect();
+          picker.observer = null;
+        }
+        for (const cand of picker.candidates) {
+          URL.revokeObjectURL(cand.url);
+        }
+        picker.candidates = [];
+        picker.selected = [];
+        picker.queue = [];
+        els.picker.hidden = true;
+        els.pickerGrid.innerHTML = "";
+      }
+
+      function renderPicker() {
+        els.pickerGrid.innerHTML = picker.candidates.map((cand, i) => {
+          const order = picker.selected.indexOf(cand);
+          return `
+          <div class="pick-card ${order >= 0 ? "selected" : ""}" data-i="${i}">
+            ${order >= 0 ? `<span class="pick-order">${order + 1}</span>` : ""}
+            ${cand.sheet ? `<img class="sheet" src="${cand.sheet}" alt="">` : `<span class="thumb-fallback" style="width:100%;height:120px">${cand.sheetError ? "プレビュー生成失敗" : "プレビュー生成待ち"}</span>`}
+            <span class="pick-name" title="${escapeHtml(cand.relPath)}">${escapeHtml(cand.name)}</span>
+            <span class="pick-note">${cand.meta ? `${formatClock(cand.meta.duration)} ・ ${cand.meta.width}x${cand.meta.height}` : escapeHtml(cand.relPath)}</span>
+            <button type="button" class="pick-expand" data-i="${i}">拡大</button>
+          </div>`;
+        }).join("");
+        els.pickerGrid.querySelectorAll(".pick-card").forEach(card => {
+          card.addEventListener("click", event => {
+            if (event.target.closest(".pick-expand")) return;
+            togglePick(Number(card.dataset.i));
+          });
+        });
+        els.pickerGrid.querySelectorAll(".pick-expand").forEach(btn => {
+          btn.addEventListener("click", () => {
+            openSheetView(picker.candidates, Number(btn.dataset.i), "picker");
+          });
+        });
+        if (picker.observer) {
+          els.pickerGrid.querySelectorAll(".pick-card").forEach(card => picker.observer.observe(card));
+        }
+      }
+
+      function setupPickerObserver() {
+        if (picker.observer) picker.observer.disconnect();
+        picker.observer = new IntersectionObserver(entries => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            const cand = picker.candidates[Number(entry.target.dataset.i)];
+            if (cand && !cand.sheet && !cand.sheetError && !cand.queued) {
+              cand.queued = true;
+              picker.queue.push(cand);
+              processPickerQueue();
+            }
+          }
+        }, { root: els.pickerGrid, rootMargin: "240px" });
+        els.pickerGrid.querySelectorAll(".pick-card").forEach(card => picker.observer.observe(card));
+      }
+
+      async function processPickerQueue() {
+        if (picker.processing) return;
+        picker.processing = true;
+        while (picker.queue.length) {
+          const cand = picker.queue.shift();
+          if (!picker.candidates.includes(cand) || cand.sheet || cand.sheetError) continue;
+          try {
+            await getContactSheet(cand);
+          } catch (error) {
+            cand.sheetError = true;
+            console.warn("Picker sheet failed", cand.name, error);
+          }
+          if (isPickerOpen()) renderPicker();
+        }
+        picker.processing = false;
+      }
+
+      function togglePick(i) {
+        const cand = picker.candidates[i];
+        if (!cand) return;
+        const at = picker.selected.indexOf(cand);
+        if (at >= 0) {
+          picker.selected.splice(at, 1);
+        } else {
+          picker.selected.push(cand);
+        }
+        renderPicker();
+        updatePickerStatus();
+      }
+
+      function updatePickerStatus() {
+        els.pickerStatus.textContent = `動画 ${picker.candidates.length} 件中 ${picker.selected.length} 件を選択中（クリックした順に登録されます）`;
+        els.pickerRegister.textContent = `選択した動画を登録（${picker.selected.length}件）`;
+        els.pickerRegister.disabled = picker.selected.length === 0;
+      }
+
+      function registerPicked() {
+        if (!picker.selected.length) return;
+        const mode = state.files.length ? "append" : "replace";
+        const slots = Math.max(0, 99 - (mode === "append" ? state.files.length : 0));
+        const chosen = picker.selected.slice(0, slots);
+        const items = chosen.map(cand => ({
+          file: cand.file,
+          index: 0,
+          name: cand.name,
+          url: cand.url,
+          thumb: cand.thumb || "",
+          thumbError: false,
+          sheet: cand.sheet || "",
+          sheetError: !!cand.sheetError,
+          meta: cand.meta || null,
+          loadError: ""
+        }));
+        for (const cand of picker.candidates) {
+          if (!chosen.includes(cand)) {
+            URL.revokeObjectURL(cand.url);
+          }
+        }
+        if (picker.observer) {
+          picker.observer.disconnect();
+          picker.observer = null;
+        }
+        picker.candidates = [];
+        picker.selected = [];
+        picker.queue = [];
+        els.picker.hidden = true;
+        els.pickerGrid.innerHTML = "";
+        applyLoadedItems(items, mode);
       }
 
       function createThumbnail(item) {
@@ -1040,14 +1633,123 @@
             ${renderThumb(item, "thumb")}
             <div class="file-meta">
               <div class="file-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
-              <div class="file-note">${item.thumbError ? "サムネイル生成失敗" : "video " + item.index}</div>
+              <div class="file-note">${escapeHtml(fileNote(item))}</div>
             </div>
             <button type="button" class="remove-file" data-index="${item.index - 1}" title="登録解除" aria-label="${escapeHtml(item.name)} の登録解除">×</button>
+            ${item.sheet ? `<img class="sheet" src="${item.sheet}" data-index="${item.index - 1}" alt="${escapeHtml(item.name)} のプレビュー" title="クリックで拡大">` : ""}
           </li>
         `).join("");
         els.fileList.querySelectorAll(".remove-file").forEach(button => {
           button.addEventListener("click", () => removeFile(Number(button.dataset.index)));
         });
+        els.fileList.querySelectorAll(".sheet").forEach(img => {
+          img.addEventListener("click", () => openSheetView(state.files, Number(img.dataset.index), "files"));
+        });
+      }
+
+      function fileNote(item) {
+        if (item.thumbError && item.sheetError) return "サムネイル生成失敗";
+        if (item.meta) return `${formatClock(item.meta.duration)} ・ ${item.meta.width}x${item.meta.height}`;
+        if (item.sheetError) return "プレビュー生成失敗";
+        return "プレビュー生成中…";
+      }
+
+      // 拡大表示の閲覧状態。list は表示対象の配列（登録済みファイル or ピッカー候補）、
+      // context は "files" | "picker"。左右キーで前後の動画へ移動し、
+      // ピッカーでは Space で選択/解除できる。
+      const sheetView = { list: [], index: -1, context: "" };
+
+      function openSheetView(list, index, context) {
+        if (!list.length) return;
+        sheetView.list = list;
+        sheetView.context = context;
+        els.sheetModal.hidden = false;
+        showSheetAt(index);
+      }
+
+      async function showSheetAt(index) {
+        const n = sheetView.list.length;
+        if (!n) return;
+        sheetView.index = ((index % n) + n) % n;
+        const item = sheetView.list[sheetView.index];
+        renderSheetModal();
+        if (!item.sheet && !item.sheetError) {
+          try {
+            await getContactSheet(item);
+          } catch (error) {
+            item.sheetError = true;
+          }
+          if (isSheetModalOpen() && sheetView.list[sheetView.index] === item) {
+            renderSheetModal();
+          }
+          if (sheetView.context === "picker" && isPickerOpen()) renderPicker();
+          if (sheetView.context === "files") renderFileList();
+        }
+        prefetchSheet(sheetView.index + 1);
+        prefetchSheet(sheetView.index - 1);
+      }
+
+      function prefetchSheet(index) {
+        const n = sheetView.list.length;
+        if (!n) return;
+        const item = sheetView.list[((index % n) + n) % n];
+        if (item && !item.sheet && !item.sheetError) {
+          getContactSheet(item).catch(() => {
+            item.sheetError = true;
+          });
+        }
+      }
+
+      function renderSheetModal() {
+        const item = sheetView.list[sheetView.index];
+        if (!item) return;
+        if (item.sheet) {
+          els.sheetModalImg.src = item.sheet;
+          els.sheetModalImg.style.display = "";
+        } else {
+          els.sheetModalImg.removeAttribute("src");
+          els.sheetModalImg.style.display = "none";
+        }
+        let caption = `${item.name}（${sheetView.index + 1} / ${sheetView.list.length}）`;
+        if (sheetView.context === "picker") {
+          const order = picker.selected.indexOf(item);
+          caption += order >= 0 ? ` ・ 選択中（${order + 1}番目に登録）` : " ・ 未選択";
+        }
+        if (!item.sheet) {
+          caption += item.sheetError ? " ・ プレビュー生成失敗" : " ・ プレビュー生成中…";
+        }
+        els.sheetModalCaption.textContent = caption;
+      }
+
+      function stepSheet(delta) {
+        showSheetAt(sheetView.index + delta);
+      }
+
+      function toggleSheetSelection() {
+        if (sheetView.context !== "picker") return;
+        const item = sheetView.list[sheetView.index];
+        if (!item) return;
+        const at = picker.selected.indexOf(item);
+        if (at >= 0) {
+          picker.selected.splice(at, 1);
+        } else {
+          picker.selected.push(item);
+        }
+        renderSheetModal();
+        renderPicker();
+        updatePickerStatus();
+      }
+
+      function closeSheetModal() {
+        els.sheetModal.hidden = true;
+        els.sheetModalImg.removeAttribute("src");
+        sheetView.list = [];
+        sheetView.index = -1;
+        sheetView.context = "";
+      }
+
+      function isSheetModalOpen() {
+        return !els.sheetModal.hidden;
       }
 
       function renderEditors() {
@@ -1160,6 +1862,29 @@
       }
 
       function onKeyDown(event) {
+        if (isSheetModalOpen()) {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            closeSheetModal();
+          } else if (event.key === "ArrowRight") {
+            event.preventDefault();
+            stepSheet(1);
+          } else if (event.key === "ArrowLeft") {
+            event.preventDefault();
+            stepSheet(-1);
+          } else if (event.code === "Space" || event.key === " ") {
+            event.preventDefault();
+            toggleSheetSelection();
+          }
+          return;
+        }
+        if (isPickerOpen()) {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            closePicker();
+          }
+          return;
+        }
         const number = getKeyNumber(event);
         const editing = isEditingText(event);
         if (number && (!editing || document.fullscreenElement)) {
@@ -1207,6 +1932,24 @@
           event.target.value = "";
         });
         els.appendButton.addEventListener("click", () => els.appendInput.click());
+        els.folderButton.addEventListener("click", () => els.folderInput.click());
+        els.folderInput.addEventListener("change", event => {
+          openPicker(event.target.files);
+          event.target.value = "";
+        });
+        els.pickerSelectAll.addEventListener("click", () => {
+          picker.selected = picker.candidates.slice();
+          renderPicker();
+          updatePickerStatus();
+        });
+        els.pickerClear.addEventListener("click", () => {
+          picker.selected = [];
+          renderPicker();
+          updatePickerStatus();
+        });
+        els.pickerRegister.addEventListener("click", registerPicked);
+        els.pickerCancel.addEventListener("click", () => closePicker());
+        els.sheetModal.addEventListener("click", closeSheetModal);
         els.clearFilesButton.addEventListener("click", clearFiles);
         els.fullscreenButton.addEventListener("click", requestFullscreen);
         els.restartButton.addEventListener("click", restartActiveLoop);
