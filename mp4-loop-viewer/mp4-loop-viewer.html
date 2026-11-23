@@ -1149,7 +1149,8 @@
       // プレビュー（コンタクトシート）の永続キャッシュ。ファイル名＋サイズ＋更新日時をキーに
       // IndexedDBへ保存し、同じファイルを再度選んだときは生成を省略する。
       const sheetCache = { db: null, failed: false };
-      const SHEET_CACHE_MAX = 300;
+      const SHEET_CACHE_MAX = 5000;
+      const SHEET_CACHE_MAX_BYTES = 2 * 1024 * 1024 * 1024;
 
       function sheetCacheDb() {
         if (sheetCache.failed) return Promise.resolve(null);
@@ -1207,26 +1208,73 @@
         const db = await sheetCacheDb();
         if (!db || !blob) return;
         try {
-          await new Promise(resolve => {
-            const tx = db.transaction("sheets", "readwrite");
-            tx.objectStore("sheets").put({ key: fileCacheKey(file), blob, meta, savedAt: Date.now() });
-            tx.oncomplete = () => resolve();
-            tx.onerror = () => resolve();
-          });
-          const all = await new Promise(resolve => {
-            const rq = db.transaction("sheets", "readonly").objectStore("sheets").getAll();
-            rq.onsuccess = () => resolve(rq.result || []);
-            rq.onerror = () => resolve([]);
-          });
-          if (all.length > SHEET_CACHE_MAX) {
-            const excess = all.slice().sort((a, b) => a.savedAt - b.savedAt).slice(0, all.length - SHEET_CACHE_MAX);
-            const tx = db.transaction("sheets", "readwrite");
-            const store = tx.objectStore("sheets");
-            for (const rec of excess) store.delete(rec.key);
+          const record = { key: fileCacheKey(file), blob, meta, savedAt: Date.now() };
+          let stored = await cacheStoreRecord(db, record);
+          if (!stored) {
+            // 容量不足の可能性があるので古いものをまとめて空けて1回だけ再試行する
+            await cacheEvictOldest(db, 200);
+            stored = await cacheStoreRecord(db, record);
+          }
+          if (stored) {
+            await cachePrune(db);
           }
         } catch (error) {
           console.warn("Sheet cache write failed", error);
         }
+      }
+
+      function cacheStoreRecord(db, record) {
+        return new Promise(resolve => {
+          try {
+            const tx = db.transaction("sheets", "readwrite");
+            tx.objectStore("sheets").put(record);
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
+            tx.onabort = () => resolve(false);
+          } catch (error) {
+            resolve(false);
+          }
+        });
+      }
+
+      async function cacheEvictOldest(db, count) {
+        const all = await cacheGetAllSheets(db);
+        const victims = all.slice().sort((a, b) => a.savedAt - b.savedAt).slice(0, count);
+        if (!victims.length) return;
+        const tx = db.transaction("sheets", "readwrite");
+        const store = tx.objectStore("sheets");
+        for (const rec of victims) store.delete(rec.key);
+      }
+
+      function cacheGetAllSheets(db) {
+        return new Promise(resolve => {
+          try {
+            const rq = db.transaction("sheets", "readonly").objectStore("sheets").getAll();
+            rq.onsuccess = () => resolve(rq.result || []);
+            rq.onerror = () => resolve([]);
+          } catch (error) {
+            resolve([]);
+          }
+        });
+      }
+
+      async function cachePrune(db) {
+        const all = await cacheGetAllSheets(db);
+        let totalBytes = all.reduce((sum, rec) => sum + (rec.blob ? rec.blob.size : 0), 0);
+        if (all.length <= SHEET_CACHE_MAX && totalBytes <= SHEET_CACHE_MAX_BYTES) return;
+        const sorted = all.slice().sort((a, b) => a.savedAt - b.savedAt);
+        const victims = [];
+        let remaining = all.length;
+        for (const rec of sorted) {
+          if (remaining <= SHEET_CACHE_MAX && totalBytes <= SHEET_CACHE_MAX_BYTES) break;
+          victims.push(rec);
+          remaining -= 1;
+          totalBytes -= rec.blob ? rec.blob.size : 0;
+        }
+        if (!victims.length) return;
+        const tx = db.transaction("sheets", "readwrite");
+        const store = tx.objectStore("sheets");
+        for (const rec of victims) store.delete(rec.key);
       }
 
       async function getContactSheet(item) {
