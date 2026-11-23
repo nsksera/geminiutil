@@ -1182,6 +1182,15 @@
         return `v1|${file.name}|${file.size}|${file.lastModified}`;
       }
 
+      function blobToDataUrl(blob) {
+        return new Promise(resolve => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(blob);
+        });
+      }
+
       async function cacheGetSheet(file) {
         const db = await sheetCacheDb();
         if (!db) return null;
@@ -1195,13 +1204,8 @@
           }
         });
         if (!rec || !rec.blob) return null;
-        const dataUrl = await new Promise(resolve => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = () => resolve(null);
-          reader.readAsDataURL(rec.blob);
-        });
-        return dataUrl ? { dataUrl, meta: rec.meta || null } : null;
+        const dataUrl = await blobToDataUrl(rec.blob);
+        return dataUrl ? { dataUrl, meta: rec.meta || null, blob: rec.blob } : null;
       }
 
       async function cachePutSheet(file, blob, meta) {
@@ -1279,18 +1283,154 @@
 
       async function getContactSheet(item) {
         if (item.sheet) return item.sheet;
+        // 1) 同一フォルダのキャッシュファイルを最優先で読む
+        const fromFolder = await folderCacheGet(item.file);
+        if (fromFolder) {
+          item.meta = fromFolder.meta;
+          item.sheet = fromFolder.dataUrl;
+          return item.sheet;
+        }
+        // 2) ブラウザ内キャッシュ（IndexedDB）
         const cached = await cacheGetSheet(item.file);
         if (cached) {
           item.meta = cached.meta;
           item.sheet = cached.dataUrl;
+          if (cached.blob) {
+            folderCachePut(item.file, cached.blob, item.meta);
+          }
           return item.sheet;
         }
+        // 3) 新規生成して両方のキャッシュへ保存する
         const made = await createContactSheet(item);
         item.sheet = made.dataUrl;
         if (made.blob) {
           cachePutSheet(item.file, made.blob, item.meta);
+          folderCachePut(item.file, made.blob, item.meta);
         }
         return item.sheet;
+      }
+
+      // フォルダ内キャッシュ：選んだフォルダ直下の `mp4-preview-cache/` に
+      // シート画像（JPEG）と index.json を置く。ブラウザのデータを消しても残り、
+      // フォルダごと持ち運べる。File System Access API（Chrome）で読み書きする。
+      const CACHE_DIR_NAME = "mp4-preview-cache";
+      const folderCache = { root: null, dir: null, index: new Map(), writable: false, saveTimer: 0 };
+
+      function fnv1a(str) {
+        let h = 0x811c9dc5;
+        for (let i = 0; i < str.length; i++) {
+          h ^= str.charCodeAt(i);
+          h = Math.imul(h, 0x01000193);
+        }
+        return (h >>> 0).toString(16).padStart(8, "0");
+      }
+
+      function sheetFileName(file) {
+        return `${fnv1a(fileCacheKey(file))}-${file.size}.jpg`;
+      }
+
+      async function folderCacheDir(create) {
+        if (folderCache.dir) return folderCache.dir;
+        if (!folderCache.root) return null;
+        try {
+          folderCache.dir = await folderCache.root.getDirectoryHandle(CACHE_DIR_NAME, { create: !!create });
+        } catch (error) {
+          return null;
+        }
+        return folderCache.dir;
+      }
+
+      async function folderCacheLoad(rootHandle) {
+        folderCache.root = rootHandle;
+        folderCache.dir = null;
+        folderCache.index = new Map();
+        folderCache.writable = true;
+        const dir = await folderCacheDir(false);
+        if (!dir) return;
+        try {
+          const idxHandle = await dir.getFileHandle("index.json");
+          const idxFile = await idxHandle.getFile();
+          const data = JSON.parse(await idxFile.text());
+          for (const [key, entry] of Object.entries(data.entries || {})) {
+            folderCache.index.set(key, entry);
+          }
+        } catch (error) {
+          // index.json が無い場合は空のキャッシュとして扱う
+        }
+      }
+
+      async function pruneFolderCache(items) {
+        if (!folderCache.dir) return;
+        const keys = new Set(items.map(item => fileCacheKey(item.file)));
+        let changed = false;
+        for (const [key, entry] of Array.from(folderCache.index)) {
+          if (keys.has(key)) continue;
+          folderCache.index.delete(key);
+          changed = true;
+          try {
+            await folderCache.dir.removeEntry(entry.f);
+          } catch (error) {
+            // 掃除の失敗は無視する
+          }
+        }
+        if (changed) {
+          saveFolderCacheIndex();
+        }
+      }
+
+      async function folderCacheGet(file) {
+        const entry = folderCache.index.get(fileCacheKey(file));
+        if (!entry) return null;
+        const dir = await folderCacheDir(false);
+        if (!dir) return null;
+        try {
+          const fh = await dir.getFileHandle(entry.f);
+          const blob = await fh.getFile();
+          const dataUrl = await blobToDataUrl(blob);
+          return dataUrl ? { dataUrl, meta: entry.meta || null, blob } : null;
+        } catch (error) {
+          return null;
+        }
+      }
+
+      async function folderCachePut(file, blob, meta) {
+        if (!folderCache.writable || !folderCache.root || !blob) return;
+        try {
+          const dir = await folderCacheDir(true);
+          if (!dir) {
+            folderCache.writable = false;
+            return;
+          }
+          const name = sheetFileName(file);
+          const fh = await dir.getFileHandle(name, { create: true });
+          const writable = await fh.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          folderCache.index.set(fileCacheKey(file), { f: name, meta });
+          scheduleFolderCacheIndexSave();
+        } catch (error) {
+          folderCache.writable = false;
+          console.warn("Folder cache write failed", error);
+        }
+      }
+
+      function scheduleFolderCacheIndexSave() {
+        window.clearTimeout(folderCache.saveTimer);
+        folderCache.saveTimer = window.setTimeout(saveFolderCacheIndex, 1200);
+      }
+
+      async function saveFolderCacheIndex() {
+        window.clearTimeout(folderCache.saveTimer);
+        const dir = await folderCacheDir(false);
+        if (!dir) return;
+        try {
+          const fh = await dir.getFileHandle("index.json", { create: true });
+          const writable = await fh.createWritable();
+          await writable.write(JSON.stringify({ version: 1, entries: Object.fromEntries(folderCache.index) }));
+          await writable.close();
+        } catch (error) {
+          console.warn("Folder cache index save failed", error);
+        }
       }
 
       const picker = {
@@ -1305,20 +1445,74 @@
         return !els.picker.hidden;
       }
 
+      function isVideoFile(file) {
+        return file.type.startsWith("video/") || /\.(mp4|m4v|mov|webm|mkv)$/i.test(file.name);
+      }
+
       function openPicker(fileList) {
+        // 通常のフォルダ入力（File System Access APIが使えない環境向け）。
+        // この経路ではフォルダへの書き込みができないので、フォルダキャッシュは読み取りのみ。
+        folderCache.writable = false;
+        const items = Array.from(fileList).map(file => ({
+          file,
+          relPath: file.webkitRelativePath || file.name,
+          handle: null
+        }));
+        openPickerItems(items);
+      }
+
+      async function openFolderViaHandle() {
+        let root;
+        try {
+          root = await window.showDirectoryPicker({ mode: "readwrite" });
+        } catch (error) {
+          return; // キャンセル時は何もしない
+        }
+        const items = [];
+        await collectFromDirectory(root, "", items);
+        if (!items.length) {
+          setStatus("フォルダ内に動画ファイルがありませんでした。", true);
+          return;
+        }
+        await folderCacheLoad(root);
+        await pruneFolderCache(items);
+        openPickerItems(items);
+      }
+
+      async function collectFromDirectory(dirHandle, basePath, out) {
+        for await (const entry of dirHandle.values()) {
+          if (entry.name === CACHE_DIR_NAME) continue;
+          const rel = basePath + entry.name;
+          if (entry.kind === "file") {
+            if (/\.(mp4|m4v|mov|webm|mkv)$/i.test(entry.name)) {
+              try {
+                const file = await entry.getFile();
+                out.push({ file, relPath: rel, handle: entry });
+              } catch (error) {
+                console.warn("File read failed", rel, error);
+              }
+            }
+          } else if (entry.kind === "directory") {
+            await collectFromDirectory(entry, rel + "/", out);
+          }
+        }
+      }
+
+      function openPickerItems(items) {
         closePicker();
-        const videos = Array.from(fileList)
-          .filter(file => file.type.startsWith("video/") || /\.mp4$/i.test(file.name))
-          .sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name, "ja"));
+        const videos = items
+          .filter(item => isVideoFile(item.file))
+          .sort((a, b) => a.relPath.localeCompare(b.relPath, "ja"));
         if (!videos.length) {
           setStatus("フォルダ内に動画ファイルがありませんでした。", true);
           return;
         }
-        picker.candidates = videos.map(file => ({
-          file,
-          name: file.name,
-          relPath: file.webkitRelativePath || file.name,
-          url: URL.createObjectURL(file),
+        picker.candidates = videos.map(item => ({
+          file: item.file,
+          handle: item.handle || null,
+          name: item.file.name,
+          relPath: item.relPath,
+          url: URL.createObjectURL(item.file),
           thumb: "",
           thumbError: false,
           sheet: "",
@@ -1335,6 +1529,7 @@
       }
 
       function closePicker() {
+        saveFolderCacheIndex();
         if (picker.observer) {
           picker.observer.disconnect();
           picker.observer = null;
@@ -1431,6 +1626,7 @@
 
       function registerPicked() {
         if (!picker.selected.length) return;
+        saveFolderCacheIndex();
         const mode = state.files.length ? "append" : "replace";
         const slots = Math.max(0, 99 - (mode === "append" ? state.files.length : 0));
         const chosen = picker.selected.slice(0, slots);
@@ -1980,7 +2176,13 @@
           event.target.value = "";
         });
         els.appendButton.addEventListener("click", () => els.appendInput.click());
-        els.folderButton.addEventListener("click", () => els.folderInput.click());
+        els.folderButton.addEventListener("click", () => {
+          if (window.showDirectoryPicker) {
+            openFolderViaHandle();
+          } else {
+            els.folderInput.click();
+          }
+        });
         els.folderInput.addEventListener("change", event => {
           openPicker(event.target.files);
           event.target.value = "";
