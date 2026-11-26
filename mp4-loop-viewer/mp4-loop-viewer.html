@@ -295,6 +295,10 @@
       grid-column: 1 / -1;
     }
 
+    .vcard.expanded .vcard-head {
+      cursor: pointer;
+    }
+
     /* 拡大時もサムネイルは通常カードと同じ幅に留める（横に伸ばさない） */
     .vcard.expanded .vcard-thumb {
       width: 208px;
@@ -3749,11 +3753,11 @@
             }).join("")}</div>` : "";
         return `
           <div class="vcard ${active ? "active" : ""} ${card.members.length ? "" : "empty"} ${expanded ? "expanded" : ""}" data-card="${key}" draggable="true" title="カード${key}（クリックで再生、サムネイルクリックで中身を展開、ドラッグで移動：中央へ落とすとグループ化、端へ落とすと並べ替え）">
-            <div class="vcard-head">
+            <div class="vcard-head"${expanded ? ` data-expand="${key}" title="クリックで閉じる"` : ""}>
               <span class="vcard-key">${key}</span>
               <button type="button" class="mini-btn ${card.mode === "once" ? "mode-once" : "mode-loop"}" data-mode="${key}" title="このカードの再生モード（ループ／一回だけ）">${card.mode === "once" ? "一回" : "ループ"}</button>
             </div>
-            <span class="${thumbClass}" data-expand="${key}">${thumbHtml}</span>
+            ${expanded ? "" : `<span class="${thumbClass}" data-expand="${key}">${thumbHtml}</span>`}
             <span class="vcard-meta">${card.members.length ? `${card.members.length}件` : "未指定"}</span>${membersHtml}
           </div>
         `;
