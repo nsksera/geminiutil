@@ -1415,7 +1415,9 @@
             }
             const sorted = diffs.slice().sort((a, b) => a - b);
             const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
-            const threshold = Math.max(0.30, median * 3);
+            // 0.30固定では実際の場面転換（平均差 0.1〜0.25 程度）をほぼ拾えなかったため、
+            // 下限を 0.10 に下げ、中央値の4倍との大きい方をしきい値にする。
+            const threshold = Math.max(0.10, median * 4);
             const marks = [];
             for (let i = 0; i < diffs.length; i++) {
               if (diffs[i] < threshold) continue;
@@ -3563,6 +3565,10 @@
         window.addEventListener("resize", schedulePlayerFit);
         els.stage.addEventListener("mousemove", resetOverlayIdle);
         els.stage.addEventListener("click", resetOverlayIdle);
+        // ドラッグ中は mousemove が来ないので、ドラッグ操作でもUIを起こし続ける
+        // （フルスクリーン時にドラッグの途中でUIが消えてドロップできない事故の防止）。
+        document.addEventListener("dragstart", resetOverlayIdle);
+        document.addEventListener("dragover", resetOverlayIdle);
 
         let rotateDrag = null;
 
