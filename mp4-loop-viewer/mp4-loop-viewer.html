@@ -212,9 +212,140 @@
 
     .overlay-cards {
       display: grid;
-      grid-template-columns: repeat(9, minmax(92px, 1fr));
+      grid-template-columns: repeat(10, minmax(0, 1fr));
       gap: 8px;
       align-items: stretch;
+    }
+
+    .vcard {
+      display: grid;
+      gap: 4px;
+      padding: 6px;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 10px;
+      background: rgba(10, 13, 18, .82);
+      box-shadow: var(--shadow);
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .vcard:hover {
+      border-color: rgba(124, 196, 255, .6);
+    }
+
+    .vcard.active {
+      border-color: #7cc4ff;
+      box-shadow: 0 0 0 1px #7cc4ff, var(--shadow);
+    }
+
+    .vcard.empty {
+      opacity: .55;
+    }
+
+    .vcard.drop-target {
+      outline: 2px dashed #7cc4ff;
+      outline-offset: -2px;
+    }
+
+    .vcard-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+    }
+
+    .vcard-key {
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .vcard .mini-btn {
+      height: 22px;
+      min-height: 22px;
+      padding: 0 6px;
+      font-size: 10px;
+    }
+
+    .vcard-thumb {
+      display: block;
+      cursor: zoom-in;
+    }
+
+    .vcard .thumb,
+    .vcard .thumb-fallback {
+      width: 100%;
+      height: 54px;
+      object-fit: cover;
+    }
+
+    .vcard-meta {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .card-members {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 10px;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 8px;
+      background: rgba(8, 10, 13, .72);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    .card-members[hidden] {
+      display: none;
+    }
+
+    .card-members-title {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .member-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 6px;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 999px;
+      background: rgba(255,255,255,.05);
+      cursor: grab;
+    }
+
+    .member-name {
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 11px;
+    }
+
+    .member-remove {
+      display: grid;
+      place-items: center;
+      width: 20px;
+      height: 20px;
+      min-height: 20px;
+      padding: 0;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+
+    .file-row[draggable="true"] {
+      cursor: grab;
+    }
+
+    .file-row.drop-target {
+      outline: 1px dashed rgba(124, 196, 255, .8);
+      outline-offset: -1px;
+    }
+
+    .sheet[hidden] {
+      display: none;
     }
 
     h1 {
@@ -767,7 +898,7 @@
       }
 
       .overlay-cards {
-        grid-template-columns: repeat(5, minmax(92px, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
       }
     }
 
@@ -795,7 +926,7 @@
       }
 
       .overlay-cards {
-        grid-template-columns: repeat(3, minmax(92px, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
       }
     }
   </style>
@@ -804,7 +935,7 @@
   <main class="app" id="app">
     <aside class="sidebar">
       <h1>MP4 Loop Viewer</h1>
-      <p class="lead">MP4を選び、数字キー1から9に割り当てたループ単位をテンキーまたはカードで切り替えます。</p>
+      <p class="lead">MP4を選び、ファイルをオーバーレイのカードに割り当てて再生します。カードはキーボードの 1〜0 / Q〜P / A〜; に対応しています。</p>
 
       <section class="section">
         <div class="section-title">Files</div>
@@ -828,16 +959,6 @@
       </section>
 
       <section class="section">
-        <div class="section-title">Loop Units</div>
-        <div id="loopEditors" class="loop-editors"></div>
-      </section>
-
-      <section class="section">
-        <div class="section-title">Loop Cards</div>
-        <div id="cards" class="cards"></div>
-      </section>
-
-      <section class="section">
         <div class="section-title">Folder Play</div>
         <input id="folderPlayInput" class="hidden-input" type="file" webkitdirectory aria-hidden="true" tabindex="-1">
         <div class="actions">
@@ -854,7 +975,7 @@
           <button id="settingsExportButton" type="button">設定をエクスポート（JSON）</button>
           <button id="settingsImportButton" type="button">設定をインポート</button>
         </div>
-        <p class="lead">ループ単位と再生モード、ファイルごとの回転・ズーム・カット印をJSONで書き出します。VR版など他の環境への持ち出し用です。</p>
+        <p class="lead">カードの構成と再生モード、ファイルごとの回転・ズーム・カット印をJSONで書き出します。VR版など他の環境への持ち出し用です。</p>
       </section>
     </aside>
 
@@ -877,6 +998,7 @@
             <span id="seekTime" class="seek-time">0:00 / 0:00</span>
           </div>
           <div id="overlayCards" class="overlay-cards"></div>
+          <div id="cardMembers" class="card-members" hidden></div>
         </div>
       </div>
     </section>
@@ -907,34 +1029,81 @@
   <script>
     (() => {
       const STORAGE_KEY = "mp4LoopViewer.v1";
-      const DEFAULT_LOOPS = {
-        1: "1",
-        2: "234",
-        3: "24",
-        4: "1112",
-        5: "",
-        6: "",
-        7: "",
-        8: "",
-        9: ""
-      };
+      const CARD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
+        "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P",
+        "A", "S", "D", "F", "G", "H", "J", "K", "L", ";"];
+      const MAX_CARD_MEMBERS = 99;
 
       const state = {
         files: [],
-        loops: { ...DEFAULT_LOOPS },
-        activeLoop: null,
-        stepIndex: 0,
+        cards: {},
+        activeCard: null,
+        cardIndex: 0,
+        finishedCard: null,
+        expandedCard: null,
+        dragItem: null,
+        dragMember: null,
+        rotClipboard: null,
+        expandedSheets: new Set(),
         uiVisible: true,
         overlayIdle: false,
         idleTimer: null,
         rotation: 0,
         zoom: 1,
         directItem: null,
-        loopModes: {},
-        finishedUnit: null,
         seekScrubbing: false,
         folderPlay: { active: false, files: [], index: 0, name: "", item: null, currentUrl: "" }
       };
+
+      function sanitizeMember(raw) {
+        if (!raw || typeof raw !== "object") return null;
+        const name = String(raw.name || "");
+        const size = Number(raw.size) || 0;
+        if (!name || !size) return null;
+        const lastModified = Number(raw.lastModified) || 0;
+        return {
+          key: typeof raw.key === "string" && raw.key ? raw.key : `v1|${name}|${size}|${lastModified}`,
+          name,
+          size,
+          lastModified,
+          segStart: raw.segStart == null ? null : Number(raw.segStart),
+          segEnd: raw.segEnd == null ? null : Number(raw.segEnd)
+        };
+      }
+
+      function memberFromItem(item) {
+        return sanitizeMember({
+          key: fileCacheKey(item.file),
+          name: item.name,
+          size: item.file.size,
+          lastModified: item.file.lastModified,
+          segStart: item.segCount > 1 ? item.segStart : null,
+          segEnd: item.segCount > 1 ? item.segEnd : null
+        });
+      }
+
+      function memberLabel(member) {
+        return member.segStart != null
+          ? `${member.name} [${formatClock(member.segStart)}–${formatClock(member.segEnd)}]`
+          : member.name;
+      }
+
+      function resolveMember(member) {
+        return state.files.find(it => {
+          if (!it.file || fileCacheKey(it.file) !== member.key) return false;
+          if (member.segStart == null) return it.segCount === 1;
+          return it.segStart === member.segStart && it.segEnd === member.segEnd;
+        }) || null;
+      }
+
+      function getCard(key) {
+        return state.cards[key] || { members: [], mode: "loop" };
+      }
+
+      function ensureCard(key) {
+        if (!state.cards[key]) state.cards[key] = { members: [], mode: "loop" };
+        return state.cards[key];
+      }
 
       const ROTATION_STORAGE_KEY = "mp4LoopViewer.rotations.v1";
       let savedRotations = loadRotations();
@@ -1341,7 +1510,7 @@
         fp.currentUrl = url;
         fp.active = true;
         fp.index = index;
-        state.activeLoop = null;
+        state.activeCard = null;
         const item = {
           file: entry.file,
           index: 0,
@@ -1423,11 +1592,9 @@
       // 設定一式の書き出し／読み込み：ループ単位＋再生モードと、ファイルごとの
       // 回転・ズーム・カット印をJSONにする。VR版など他の環境との共通フォーマット。
       function collectSettingsData() {
-        const loopUnits = [];
-        for (let key = 1; key <= 9; key++) {
-          const steps = String(state.loops[key] || "");
-          if (steps) loopUnits.push({ key, steps, mode: state.loopModes[key] === "once" ? "once" : "loop" });
-        }
+        const cards = CARD_KEYS
+          .filter(key => state.cards[key] && state.cards[key].members.length)
+          .map(key => ({ card: key, mode: state.cards[key].mode, members: state.cards[key].members }));
         const fileKeys = new Set([...Object.keys(savedRotations), ...Object.keys(savedCuts)]);
         const files = [...fileKeys].map(key => {
           const parts = key.split("|");
@@ -1445,9 +1612,9 @@
         return {
           app: "mp4-loop-viewer",
           kind: "settings",
-          version: 1,
+          version: 2,
           exportedAt: new Date().toISOString(),
-          loopUnits,
+          cards,
           files
         };
       }
@@ -1465,7 +1632,7 @@
             const writable = await handle.createWritable();
             await writable.write(blob);
             await writable.close();
-            setStatus(`設定を書き出しました：${filename}（ループ単位${data.loopUnits.length}件・ファイル設定${data.files.length}件）`);
+            setStatus(`設定を書き出しました：${filename}（カード${data.cards.length}件・ファイル設定${data.files.length}件）`);
             return;
           } catch (error) {
             if (error && error.name === "AbortError") return;
@@ -1477,21 +1644,24 @@
         anchor.download = filename;
         anchor.click();
         window.setTimeout(() => URL.revokeObjectURL(anchor.href), 4000);
-        setStatus(`設定を書き出しました：${filename}（ループ単位${data.loopUnits.length}件・ファイル設定${data.files.length}件）`);
+        setStatus(`設定を書き出しました：${filename}（カード${data.cards.length}件・ファイル設定${data.files.length}件）`);
       }
 
       async function importSettingsFile(file) {
         try {
           const data = JSON.parse(await file.text());
-          if (!data || data.app !== "mp4-loop-viewer" || data.kind !== "settings" || !Array.isArray(data.loopUnits) || !Array.isArray(data.files)) {
+          if (!data || data.app !== "mp4-loop-viewer" || data.kind !== "settings" || !Array.isArray(data.files)) {
             throw new Error("unexpected format");
           }
-          for (const unit of data.loopUnits) {
-            const key = Number(unit && unit.key);
-            if (key >= 1 && key <= 9) {
-              state.loops[key] = String(unit.steps || "").replace(/[^1-9]/g, "");
-              if (unit.mode === "once") state.loopModes[key] = "once";
-              else delete state.loopModes[key];
+          if (Array.isArray(data.cards)) {
+            for (const entry of data.cards) {
+              const key = entry && entry.card;
+              if (typeof key === "string" && CARD_KEYS.includes(key) && Array.isArray(entry.members)) {
+                state.cards[key] = {
+                  members: entry.members.map(sanitizeMember).filter(Boolean).slice(0, MAX_CARD_MEMBERS),
+                  mode: entry.mode === "once" ? "once" : "loop"
+                };
+              }
             }
           }
           saveSettings();
@@ -1516,7 +1686,7 @@
             if (insert.length) generateThumbnails(insert);
           }
           render();
-          setStatus(`設定をインポートしました（ループ単位${data.loopUnits.length}件・ファイル設定${data.files.length}件）。`);
+          setStatus(`設定をインポートしました（カード${data.cards.length}件・ファイル設定${data.files.length}件）。`);
         } catch (error) {
           console.warn("Settings import failed", error);
           setStatus("設定JSONを読み込めませんでした。", true);
@@ -1537,9 +1707,8 @@
         settingsExportButton: document.getElementById("settingsExportButton"),
         settingsImportButton: document.getElementById("settingsImportButton"),
         settingsImportInput: document.getElementById("settingsImportInput"),
-        loopEditors: document.getElementById("loopEditors"),
-        cards: document.getElementById("cards"),
         overlayCards: document.getElementById("overlayCards"),
+        cardMembers: document.getElementById("cardMembers"),
         appendButton: document.getElementById("appendButton"),
         clearFilesButton: document.getElementById("clearFilesButton"),
         fullscreenButton: document.getElementById("fullscreenButton"),
@@ -1571,16 +1740,21 @@
         try {
           const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
           if (saved && typeof saved === "object") {
-            state.loops = { ...DEFAULT_LOOPS, ...(saved.loops || {}) };
-            state.loopModes = {};
-            if (saved.loopModes && typeof saved.loopModes === "object") {
-              for (let key = 1; key <= 9; key++) {
-                if (saved.loopModes[key] === "once") state.loopModes[key] = "once";
+            state.cards = {};
+            if (saved.cards && typeof saved.cards === "object") {
+              for (const key of CARD_KEYS) {
+                const raw = saved.cards[key];
+                if (raw && Array.isArray(raw.members)) {
+                  state.cards[key] = {
+                    members: raw.members.map(sanitizeMember).filter(Boolean).slice(0, MAX_CARD_MEMBERS),
+                    mode: raw.mode === "once" ? "once" : "loop"
+                  };
+                }
               }
             }
             state.uiVisible = saved.uiVisible !== false;
-            if (Number.isInteger(saved.activeLoop) && saved.activeLoop >= 1 && saved.activeLoop <= 9) {
-              state.activeLoop = saved.activeLoop;
+            if (typeof saved.activeCard === "string" && CARD_KEYS.includes(saved.activeCard)) {
+              state.activeCard = saved.activeCard;
             }
           }
         } catch (error) {
@@ -1590,10 +1764,9 @@
 
       function saveSettings() {
         const payload = {
-          loops: state.loops,
-          loopModes: state.loopModes,
+          cards: state.cards,
           uiVisible: state.uiVisible,
-          activeLoop: state.activeLoop
+          activeCard: state.activeCard
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
       }
@@ -1603,27 +1776,9 @@
         els.status.classList.toggle("error", isError);
       }
 
-      function parseLoop(key) {
-        const raw = String(state.loops[key] || "");
-        const steps = [];
-        for (const char of raw) {
-          const index = Number(char);
-          if (index >= 1 && index <= state.files.length) {
-            steps.push(index);
-          }
-        }
-        return { raw, steps };
-      }
-
       function getCurrentFile() {
         if (state.directItem && (state.files.includes(state.directItem) || state.directItem === state.folderPlay.item)) return state.directItem;
-        if (!state.activeLoop) return null;
-        const { steps } = parseLoop(state.activeLoop);
-        if (state.stepIndex >= steps.length) {
-          state.stepIndex = 0;
-        }
-        const videoNumber = steps[state.stepIndex];
-        return state.files[videoNumber - 1] || null;
+        return null;
       }
 
       function revokeFiles() {
@@ -1661,7 +1816,8 @@
       }
 
       function resetPlayback() {
-        state.stepIndex = 0;
+        state.cardIndex = 0;
+        state.directItem = null;
         state.rotation = 0;
         state.zoom = 1;
         stopFolderPlay();
@@ -1716,14 +1872,15 @@
         renumberFiles();
 
         if (!state.files.length) {
-          state.activeLoop = null;
+          state.activeCard = null;
           saveSettings();
           resetPlayback();
           setStatus("すべての動画登録を解除しました。");
         } else if (current && current.url === removed.url) {
           resetPlayback();
-          if (state.activeLoop && parseLoop(state.activeLoop).steps.length) {
-            playCurrent(true);
+          if (state.activeCard) {
+            state.finishedCard = null;
+            playCardMember(state.cardIndex);
           }
           setStatus(`${removed.name} の登録を解除しました。`);
         } else {
@@ -1740,8 +1897,8 @@
         }
         revokeFiles();
         state.files = [];
-        state.activeLoop = null;
-        state.stepIndex = 0;
+        state.activeCard = null;
+        state.cardIndex = 0;
         saveSettings();
         resetPlayback();
         setStatus("すべての動画登録を解除しました。");
@@ -2488,24 +2645,52 @@
         });
       }
 
-      function startLoop(key, restart = true) {
+      function startCard(key) {
+        const card = getCard(key);
+        if (!card.members.length) {
+          setStatus(`カード${key}にファイルが指定されていません。Selected Videosからファイルをドラッグしてください。`, true);
+          return;
+        }
         stopFolderPlay();
-        state.finishedUnit = null;
-        const numericKey = Number(key);
-        if (!state.files.length) {
-          setStatus("先にMP4ファイルを選択してください。", true);
-          return;
-        }
-        const parsed = parseLoop(numericKey);
-        if (!parsed.steps.length) {
-          setStatus(`キー${numericKey}のループ単位に有効な動画番号がありません。`, true);
-          return;
-        }
-        state.activeLoop = numericKey;
-        state.stepIndex = 0;
+        state.finishedCard = null;
+        state.activeCard = key;
         saveSettings();
+        playCardMember(0);
+      }
+
+      async function playCardMember(index) {
+        const card = getCard(state.activeCard);
+        const member = card.members[index];
+        if (!member) {
+          state.finishedCard = state.activeCard;
+          els.player.pause();
+          setStatus(`カード${state.activeCard}の再生が終わりました（一回だけ）。`);
+          render();
+          return;
+        }
+        const item = resolveMember(member);
+        if (!item) {
+          setStatus(`カード${state.activeCard}：${member.name} は未読込のためスキップします。`, true);
+          return playCardMember(index + 1);
+        }
+        state.cardIndex = index;
+        state.directItem = item;
+        await playCurrent(true);
+        setStatus(`カード${state.activeCard}を再生中（${index + 1}/${card.members.length}）：${memberLabel(member)}`);
         render();
-        playCurrent(restart);
+      }
+
+      function advanceCard() {
+        if (!state.activeCard || state.finishedCard === state.activeCard) return;
+        const card = getCard(state.activeCard);
+        const next = state.cardIndex + 1;
+        if (next < card.members.length) {
+          playCardMember(next);
+        } else if (card.mode === "once") {
+          playCardMember(next);
+        } else {
+          playCardMember(0);
+        }
       }
 
       async function playCurrent(restart = true) {
@@ -2533,7 +2718,6 @@
         }
         try {
           await els.player.play();
-          if (!state.folderPlay.active) setStatus(`キー${state.activeLoop}を再生中。`);
         } catch (error) {
           setStatus("再生を開始できませんでした。カードまたはボタンをもう一度操作してください。", true);
         }
@@ -2575,35 +2759,18 @@
           advanceFolder();
           return;
         }
-        if (!state.activeLoop) return;
-        if (state.finishedUnit === state.activeLoop) return;
-        const { steps } = parseLoop(state.activeLoop);
-        if (!steps.length) return;
-        const isLastStep = state.stepIndex >= steps.length - 1;
-        if (isLastStep && state.loopModes[state.activeLoop] === "once") {
-          state.finishedUnit = state.activeLoop;
-          els.player.pause();
-          setStatus(`キー${state.activeLoop}の再生が終わりました（一回だけ）。`);
-          render();
+        if (state.activeCard) {
+          advanceCard();
+        }
+      }
+
+      function restartCurrent() {
+        if (!getCurrentFile()) {
+          setStatus("再生し直す対象がありません。", true);
           return;
         }
-        state.stepIndex = (state.stepIndex + 1) % steps.length;
+        if (state.activeCard) state.finishedCard = null;
         playCurrent(true);
-      }
-
-      function restartActiveLoop() {
-        if (state.activeLoop) {
-          startLoop(state.activeLoop, true);
-        } else {
-          setStatus("再生し直すループ単位を選択してください。", true);
-        }
-      }
-
-      function updateLoop(key, value) {
-        state.loops[key] = value.replace(/[^\d]/g, "").slice(0, 48);
-        saveSettings();
-        renderCards();
-        renderNow();
       }
 
       function requestFullscreen() {
@@ -2644,10 +2811,105 @@
 
       function render() {
         renderFiles();
-        renderEditors();
         renderCards();
         renderNow();
         renderOverlayVisibility();
+      }
+
+      function blockBounds(item) {
+        const idx = state.files.indexOf(item);
+        if (idx < 0 || !item.file) return [idx, idx];
+        const key = fileCacheKey(item.file);
+        let start = idx;
+        let end = idx;
+        while (start > 0 && state.files[start - 1].file && fileCacheKey(state.files[start - 1].file) === key) start--;
+        while (end < state.files.length - 1 && state.files[end + 1].file && fileCacheKey(state.files[end + 1].file) === key) end++;
+        return [start, end];
+      }
+
+      function moveBlock(item, dir) {
+        const [s, e] = blockBounds(item);
+        if (s < 0) return;
+        if (dir < 0) {
+          if (s === 0) return;
+          const [ps] = blockBounds(state.files[s - 1]);
+          const before = state.files.slice(ps, s);
+          const block = state.files.slice(s, e + 1);
+          state.files.splice(ps, (e - ps) + 1, ...block, ...before);
+        } else {
+          if (e === state.files.length - 1) return;
+          const [, ne] = blockBounds(state.files[e + 1]);
+          const after = state.files.slice(e + 1, ne + 1);
+          const block = state.files.slice(s, e + 1);
+          state.files.splice(s, (ne - s) + 1, ...after, ...block);
+        }
+        renumberFiles();
+        render();
+      }
+
+      function moveBlockTo(item, targetItem) {
+        if (!item || !targetItem || item === targetItem) return;
+        const [s, e] = blockBounds(item);
+        const [ts, te] = blockBounds(targetItem);
+        if (s < 0 || ts < 0 || s === ts) return;
+        const block = state.files.slice(s, e + 1);
+        const rest = state.files.filter((_, i) => i < s || i > e);
+        const insertPos = s < ts ? rest.indexOf(state.files[te]) + 1 : rest.indexOf(state.files[ts]);
+        if (insertPos < 0) return;
+        rest.splice(insertPos, 0, ...block);
+        state.files = rest;
+        renumberFiles();
+        render();
+      }
+
+      function clearAllCuts(key) {
+        const item = sourceItems(key)[0];
+        savedCuts[key] = [];
+        persistCuts();
+        const insert = rebuildSourceSegments(key, item?.meta?.duration || 0);
+        if (insert.length) generateThumbnails(insert);
+        setStatus(item ? `${item.name}：カットをすべて解除して1つのファイルに戻しました。` : "カットを解除しました。");
+        render();
+      }
+
+      function savedRotationOf(item) {
+        const saved = item && item.file ? savedRotations[fileCacheKey(item.file)] : null;
+        if (typeof saved === "number") return { r: saved, z: 1 };
+        if (saved && typeof saved === "object") return { r: Number(saved.r) || 0, z: Number(saved.z) || 1 };
+        return { r: 0, z: 1 };
+      }
+
+      function copyRotation(item) {
+        const live = item === getCurrentFile();
+        const value = live ? { r: state.rotation || 0, z: state.zoom || 1 } : savedRotationOf(item);
+        state.rotClipboard = value;
+        setStatus(`回転・ズームをコピーしました：回転 ${value.r}° / ズーム ${Math.round(value.z * 100)}%（${item.name}）`);
+      }
+
+      function pasteRotation(item) {
+        if (!state.rotClipboard || !item.file) {
+          setStatus("先に別のファイルで「コピー」してください。", true);
+          return;
+        }
+        const { r, z } = state.rotClipboard;
+        savedRotations[fileCacheKey(item.file)] = { r, z };
+        persistRotations();
+        if (item === getCurrentFile()) {
+          state.rotation = r;
+          state.zoom = z;
+          applyRotation();
+        }
+        setStatus(`回転・ズームを貼り付けました：回転 ${r}° / ズーム ${Math.round(z * 100)}%（${item.name}）`);
+      }
+
+      function toggleSheetExpand(item) {
+        if (state.expandedSheets.has(item)) {
+          state.expandedSheets.delete(item);
+        } else {
+          state.expandedSheets.add(item);
+          if (!item.sheet && !item.sheetError) generateThumbnails([item]);
+        }
+        renderFiles();
       }
 
       function renderFiles() {
@@ -2656,17 +2918,22 @@
           return;
         }
         els.fileList.innerHTML = state.files.map(item => `
-          <li class="file-row">
+          <li class="file-row" draggable="true" data-pos="${item.index - 1}">
             <span class="num">${item.index}</span>
-            ${renderThumb(item, "thumb")}
+            <span class="thumb-toggle" data-pos="${item.index - 1}" title="クリックでシート（16分割）を展開／畳む">${renderThumb(item, "thumb")}</span>
             <div class="file-meta">
               <div class="file-name" title="${escapeHtml(item.name)}">${escapeHtml(displayName(item))}</div>
               <div class="file-note">${escapeHtml(fileNote(item))}</div>
             </div>
+            <button type="button" class="mini-btn" data-move="-1" data-pos="${item.index - 1}" title="上へ移動">↑</button>
+            <button type="button" class="mini-btn" data-move="1" data-pos="${item.index - 1}" title="下へ移動">↓</button>
+            <button type="button" class="mini-btn" data-copy-rot="${item.index - 1}" title="このファイルの回転・ズームをコピー">コピー</button>
+            <button type="button" class="mini-btn" data-paste-rot="${item.index - 1}" title="コピーした回転・ズームをこのファイルへ貼り付け">ペースト</button>
             ${item.segIndex > 0 ? `<button type="button" class="remove-cut" data-key="${escapeHtml(fileCacheKey(item.file))}" data-time="${item.segStart}" title="このカット印を削除して前後の区間を結合">✂×</button>` : ""}
+            ${item.segIndex === 0 && item.segCount > 1 ? `<button type="button" class="redetect" data-clear-cuts="${escapeHtml(fileCacheKey(item.file))}" title="カットをすべて解除して1つのファイルに戻す">カット解除</button>` : ""}
             ${item.segIndex === 0 ? `<button type="button" class="redetect" data-key="${escapeHtml(fileCacheKey(item.file))}" title="カット印を自動で検出し直す">再検出</button>` : ""}
             <button type="button" class="remove-file" data-index="${item.index - 1}" title="登録解除（区間に分かれている場合はファイルごと）" aria-label="${escapeHtml(item.name)} の登録解除">×</button>
-            ${item.sheet ? `<img class="sheet" src="${item.sheet}" data-index="${item.index - 1}" alt="${escapeHtml(item.name)} のプレビュー" title="クリックで拡大">` : ""}
+            ${item.sheet ? `<img class="sheet" src="${item.sheet}" data-index="${item.index - 1}" alt="${escapeHtml(item.name)} のプレビュー" title="クリックで拡大" ${state.expandedSheets.has(item) ? "" : "hidden"}>` : ""}
           </li>
         `).join("");
         els.fileList.querySelectorAll(".remove-file").forEach(button => {
@@ -2675,11 +2942,52 @@
         els.fileList.querySelectorAll(".remove-cut").forEach(button => {
           button.addEventListener("click", () => removeCutMark(button.dataset.key, Number(button.dataset.time)));
         });
-        els.fileList.querySelectorAll(".redetect").forEach(button => {
+        els.fileList.querySelectorAll(".redetect[data-key]").forEach(button => {
           button.addEventListener("click", () => redetectCuts(button.dataset.key));
+        });
+        els.fileList.querySelectorAll("[data-clear-cuts]").forEach(button => {
+          button.addEventListener("click", () => clearAllCuts(button.dataset.clearCuts));
+        });
+        els.fileList.querySelectorAll("[data-move]").forEach(button => {
+          button.addEventListener("click", () => moveBlock(state.files[Number(button.dataset.pos)], Number(button.dataset.move)));
+        });
+        els.fileList.querySelectorAll("[data-copy-rot]").forEach(button => {
+          button.addEventListener("click", () => copyRotation(state.files[Number(button.dataset.copyRot)]));
+        });
+        els.fileList.querySelectorAll("[data-paste-rot]").forEach(button => {
+          button.addEventListener("click", () => pasteRotation(state.files[Number(button.dataset.pasteRot)]));
+        });
+        els.fileList.querySelectorAll(".thumb-toggle").forEach(span => {
+          span.addEventListener("click", () => toggleSheetExpand(state.files[Number(span.dataset.pos)]));
         });
         els.fileList.querySelectorAll(".sheet").forEach(img => {
           img.addEventListener("click", () => openSheetView(state.files, Number(img.dataset.index), "files"));
+        });
+        els.fileList.querySelectorAll(".file-row").forEach(row => {
+          const item = state.files[Number(row.dataset.pos)];
+          if (!item) return;
+          row.addEventListener("dragstart", event => {
+            state.dragItem = item;
+            if (event.dataTransfer) {
+              event.dataTransfer.effectAllowed = "copyMove";
+              event.dataTransfer.setData("text/plain", "file");
+            }
+          });
+          row.addEventListener("dragend", () => { state.dragItem = null; });
+          row.addEventListener("dragover", event => {
+            if (!state.dragItem || state.dragItem === item) return;
+            event.preventDefault();
+            row.classList.add("drop-target");
+          });
+          row.addEventListener("dragleave", () => row.classList.remove("drop-target"));
+          row.addEventListener("drop", event => {
+            event.preventDefault();
+            row.classList.remove("drop-target");
+            if (state.dragItem) {
+              moveBlockTo(state.dragItem, item);
+              state.dragItem = null;
+            }
+          });
         });
       }
 
@@ -2795,82 +3103,141 @@
         return !els.sheetModal.hidden;
       }
 
-      function renderEditors() {
-        els.loopEditors.innerHTML = "";
-        for (let key = 1; key <= 9; key++) {
-          const row = document.createElement("div");
-          row.className = "loop-edit-row";
-          row.innerHTML = `
-            <label for="loop-${key}">キー${key}</label>
-            <input id="loop-${key}" inputmode="numeric" autocomplete="off" value="${escapeHtml(state.loops[key] || "")}" aria-label="キー${key}のループ単位">
-            <button type="button" class="mini-btn ${state.loopModes[key] === "once" ? "mode-once" : "mode-loop"}" title="このループ単位の再生モード（ループ／一回だけ）">${state.loopModes[key] === "once" ? "一回だけ" : "ループ"}</button>
-          `;
-          const input = row.querySelector("input");
-          input.addEventListener("input", () => updateLoop(key, input.value));
-          const modeButton = row.querySelector("button");
-          modeButton.addEventListener("click", () => {
-            state.loopModes[key] = state.loopModes[key] === "once" ? "loop" : "once";
-            if (state.loopModes[key] === "loop") delete state.loopModes[key];
-            saveSettings();
-            renderEditors();
-            renderNow();
-          });
-          els.loopEditors.appendChild(row);
-        }
-      }
-
       function renderCards() {
-        const html = Array.from({ length: 9 }, (_, index) => renderLoopCard(index + 1, false)).join("");
-        const compactHtml = Array.from({ length: 9 }, (_, index) => renderLoopCard(index + 1, true)).join("");
-        els.cards.innerHTML = html;
-        els.overlayCards.innerHTML = compactHtml;
-        bindCardClicks(els.cards);
-        bindCardClicks(els.overlayCards);
-      }
-
-      function bindCardClicks(root) {
-        root.querySelectorAll(".loop-card").forEach(card => {
-          card.addEventListener("click", () => {
-            if (!card.classList.contains("disabled")) {
-              startLoop(Number(card.dataset.key), true);
+        els.overlayCards.innerHTML = CARD_KEYS.map(key => renderVCard(key)).join("");
+        els.overlayCards.querySelectorAll(".vcard").forEach(cardEl => {
+          const key = cardEl.dataset.card;
+          cardEl.addEventListener("click", () => startCard(key));
+          const modeButton = cardEl.querySelector("[data-mode]");
+          if (modeButton) modeButton.addEventListener("click", event => {
+            event.stopPropagation();
+            toggleCardMode(key);
+          });
+          const expandTarget = cardEl.querySelector("[data-expand]");
+          if (expandTarget) expandTarget.addEventListener("click", event => {
+            event.stopPropagation();
+            state.expandedCard = state.expandedCard === key ? null : key;
+            renderCards();
+          });
+          cardEl.addEventListener("dragover", event => {
+            if (!state.dragItem) return;
+            event.preventDefault();
+            cardEl.classList.add("drop-target");
+          });
+          cardEl.addEventListener("dragleave", () => cardEl.classList.remove("drop-target"));
+          cardEl.addEventListener("drop", event => {
+            event.preventDefault();
+            cardEl.classList.remove("drop-target");
+            if (state.dragItem) {
+              addCardMember(key, state.dragItem);
+              state.dragItem = null;
             }
           });
         });
+        renderCardMembers();
       }
 
-      function renderLoopCard(key, compact) {
-        const { raw, steps } = parseLoop(key);
-        const active = state.activeLoop === key;
-        const disabled = steps.length === 0;
-        const stepLabel = steps.length ? steps.join(" / ") : "有効な動画なし";
-        const status = steps.length ? `${steps.length} steps` : "無効";
-        const classes = ["loop-card", compact ? "compact" : "", active ? "active" : "", disabled ? "disabled" : ""].filter(Boolean).join(" ");
+      function renderVCard(key) {
+        const card = getCard(key);
+        const first = card.members[0];
+        const firstItem = first ? resolveMember(first) : null;
+        const active = state.activeCard === key;
+        const expanded = state.expandedCard === key;
+        const thumbHtml = first
+          ? renderThumb(firstItem || { index: "", name: first.name, thumb: "" }, "thumb")
+          : '<span class="thumb-fallback">no<br>card</span>';
         return `
-          <button type="button" class="${classes}" data-key="${key}" ${disabled ? "disabled" : ""}>
-            ${renderLoopThumbs(steps)}
-            <span class="loop-info">
-              <span class="loop-key">キー${key}</span>
-              <span class="loop-spec" title="${escapeHtml(raw || "(空)") }">${escapeHtml(raw || "(空)")}</span>
-              <span class="loop-steps" title="${escapeHtml(stepLabel)}">${escapeHtml(stepLabel)}</span>
-              <span class="loop-state">${status}</span>
-            </span>
-          </button>
+          <div class="vcard ${active ? "active" : ""} ${card.members.length ? "" : "empty"} ${expanded ? "expanded" : ""}" data-card="${key}" title="カード${key}（クリックで再生、サムネイルクリックで中身を展開）">
+            <div class="vcard-head">
+              <span class="vcard-key">${key}</span>
+              <button type="button" class="mini-btn ${card.mode === "once" ? "mode-once" : "mode-loop"}" data-mode="${key}" title="このカードの再生モード（ループ／一回だけ）">${card.mode === "once" ? "一回" : "ループ"}</button>
+            </div>
+            <span class="vcard-thumb" data-expand="${key}">${thumbHtml}</span>
+            <span class="vcard-meta">${card.members.length ? `${card.members.length}件` : "未指定"}</span>
+          </div>
         `;
       }
 
-      function renderLoopThumbs(steps) {
-        if (!steps.length) {
-          return '<span class="thumb-fallback">no<br>loop</span>';
+      function toggleCardMode(key) {
+        const card = ensureCard(key);
+        card.mode = card.mode === "once" ? "loop" : "once";
+        saveSettings();
+        renderCards();
+        renderNow();
+      }
+
+      function addCardMember(key, item) {
+        const card = ensureCard(key);
+        if (card.members.length >= MAX_CARD_MEMBERS) {
+          setStatus(`カード${key}の上限（${MAX_CARD_MEMBERS}件）に達しています。`, true);
+          return;
         }
-        if (steps.length === 1) {
-          return renderThumb(state.files[steps[0] - 1], "thumb");
+        const member = memberFromItem(item);
+        if (!member) return;
+        card.members.push(member);
+        saveSettings();
+        renderCards();
+        setStatus(`カード${key}に追加しました：${memberLabel(member)}（${card.members.length}件）`);
+      }
+
+      function removeCardMember(key, index) {
+        const card = ensureCard(key);
+        card.members.splice(index, 1);
+        saveSettings();
+        renderCards();
+      }
+
+      function moveCardMember(key, from, to) {
+        const card = ensureCard(key);
+        if (from === to || !card.members[from] || !card.members[to]) return;
+        const [member] = card.members.splice(from, 1);
+        card.members.splice(to, 0, member);
+        saveSettings();
+        renderCards();
+      }
+
+      function renderCardMembers() {
+        const root = els.cardMembers;
+        const key = state.expandedCard;
+        const card = key ? getCard(key) : null;
+        if (!key || !card || !card.members.length) {
+          root.hidden = true;
+          root.innerHTML = "";
+          return;
         }
-        const visible = steps.slice(0, 4);
-        return `
-          <span class="thumb-stack">
-            ${visible.map(step => renderMiniThumb(state.files[step - 1], step)).join("")}
-          </span>
+        root.hidden = false;
+        root.innerHTML = `
+          <span class="card-members-title">カード${key}（ドラッグで再生順を変更）</span>
+          ${card.members.map((member, i) => {
+            const item = resolveMember(member);
+            return `
+            <span class="member-chip" draggable="true" data-mi="${i}" title="${escapeHtml(memberLabel(member))}">
+              ${item && item.thumb ? `<img class="mini-thumb" src="${item.thumb}" alt="">` : `<span class="mini-thumb mini-fallback">${i + 1}</span>`}
+              <span class="member-name">${escapeHtml(memberLabel(member))}${item ? "" : "（未読込）"}</span>
+              <button type="button" class="member-remove" data-mr="${i}" title="カードから外す">×</button>
+            </span>`;
+          }).join("")}
         `;
+        root.querySelectorAll(".member-chip").forEach(chip => {
+          chip.addEventListener("dragstart", event => {
+            state.dragMember = { card: key, index: Number(chip.dataset.mi) };
+            if (event.dataTransfer) {
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData("text/plain", "member");
+            }
+          });
+          chip.addEventListener("dragover", event => event.preventDefault());
+          chip.addEventListener("drop", event => {
+            event.preventDefault();
+            if (state.dragMember && state.dragMember.card === key) {
+              moveCardMember(key, state.dragMember.index, Number(chip.dataset.mi));
+            }
+            state.dragMember = null;
+          });
+        });
+        root.querySelectorAll(".member-remove").forEach(button => {
+          button.addEventListener("click", () => removeCardMember(key, Number(button.dataset.mr)));
+        });
       }
 
       function renderThumb(item, className) {
@@ -2924,21 +3291,31 @@
         }
         if (!item) {
           els.nowPlaying.textContent = "現在再生中: なし";
-          els.nowLoop.textContent = state.activeLoop ? `ループ: キー${state.activeLoop}` : "ループ: なし";
+          els.nowLoop.textContent = state.activeCard ? `カード: ${state.activeCard}` : "カード: なし";
           updateSeekBar();
           return;
         }
-        const { raw, steps } = parseLoop(state.activeLoop);
-        const videoNumber = steps[state.stepIndex];
-        els.nowPlaying.textContent = `現在再生中: ${videoNumber}: ${displayName(item)}`;
-        els.nowLoop.textContent = `ループ: キー${state.activeLoop} (${raw}) step ${state.stepIndex + 1}/${steps.length}${state.loopModes[state.activeLoop] === "once" ? " ・ 一回だけ" : ""}`;
+        if (state.activeCard) {
+          const card = getCard(state.activeCard);
+          const member = card.members[state.cardIndex];
+          els.nowPlaying.textContent = `現在再生中: ${member ? memberLabel(member) : displayName(item)}`;
+          els.nowLoop.textContent = `カード${state.activeCard} ${state.cardIndex + 1}/${card.members.length}${card.mode === "once" ? " ・ 一回だけ" : " ・ ループ"}`;
+        } else {
+          els.nowPlaying.textContent = `現在再生中: ${displayName(item)}`;
+          els.nowLoop.textContent = "カード: なし";
+        }
         updateSeekBar();
       }
 
-      function getKeyNumber(event) {
-        if (/^Digit[1-9]$/.test(event.code)) return Number(event.code.replace("Digit", ""));
-        if (/^Numpad[1-9]$/.test(event.code)) return Number(event.code.replace("Numpad", ""));
-        if (/^[1-9]$/.test(event.key)) return Number(event.key);
+      function cardKeyFromEvent(event) {
+        if (event.ctrlKey || event.metaKey || event.altKey) return null;
+        if (/^Digit[0-9]$/.test(event.code)) return event.code.slice(5);
+        if (/^Numpad[1-9]$/.test(event.code)) return event.code.slice(6);
+        if (/^Key[A-Z]$/.test(event.code)) {
+          const key = event.code.slice(3);
+          return CARD_KEYS.includes(key) ? key : null;
+        }
+        if (event.code === "Semicolon") return ";";
         return null;
       }
 
@@ -2971,11 +3348,11 @@
           }
           return;
         }
-        const number = getKeyNumber(event);
+        const cardKey = cardKeyFromEvent(event);
         const editing = isEditingText(event);
-        if (number && (!editing || document.fullscreenElement)) {
+        if (cardKey && (!editing || document.fullscreenElement)) {
           event.preventDefault();
-          startLoop(number, true);
+          startCard(cardKey);
           return;
         }
 
@@ -2998,12 +3375,12 @@
         } else if (event.key.toLowerCase() === "c" && !event.ctrlKey && !event.metaKey && !event.altKey) {
           event.preventDefault();
           addCutMarkAtCurrentTime();
-        } else if (event.key.toLowerCase() === "h") {
+        } else if (event.key.toLowerCase() === "z") {
           event.preventDefault();
           toggleUi();
-        } else if (event.key.toLowerCase() === "r" || event.key === "0" || event.code === "Numpad0" || event.code === "Digit0") {
+        } else if (event.code === "Numpad0") {
           event.preventDefault();
-          restartActiveLoop();
+          restartCurrent();
         }
       }
 
@@ -3082,7 +3459,7 @@
           beginFolderPlay(sortFolderEntries(entries), top);
         });
         els.fullscreenButton.addEventListener("click", requestFullscreen);
-        els.restartButton.addEventListener("click", restartActiveLoop);
+        els.restartButton.addEventListener("click", restartCurrent);
         els.toggleUiButton.addEventListener("click", toggleUi);
         els.player.addEventListener("loadedmetadata", schedulePlayerFit);
         els.player.addEventListener("loadedmetadata", updateSeekBar);
