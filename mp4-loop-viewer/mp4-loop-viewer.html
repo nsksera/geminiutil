@@ -367,18 +367,6 @@
       border-color: #4c74a6;
     }
 
-    .playlist-name,
-    .playlist-select {
-      flex: 1;
-      min-width: 0;
-      height: 32px;
-      padding: 0 8px;
-      border-radius: 6px;
-      border: 1px solid rgba(255,255,255,.18);
-      background: rgba(255,255,255,.06);
-      color: inherit;
-    }
-
     .mini-btn {
       display: grid;
       place-items: center;
@@ -406,11 +394,6 @@
 
     .mini-btn.mode-once {
       color: #ffd9a8;
-    }
-
-    .playlist-list .file-row.playing {
-      outline: 1px solid rgba(120, 200, 255, .65);
-      outline-offset: -1px;
     }
 
     .thumb {
@@ -594,7 +577,7 @@
 
     .loop-edit-row {
       display: grid;
-      grid-template-columns: 42px minmax(0, 1fr);
+      grid-template-columns: 42px minmax(0, 1fr) auto;
       gap: 8px;
       align-items: center;
     }
@@ -829,31 +812,6 @@
       </section>
 
       <section class="section">
-        <div class="section-title">Playlist</div>
-        <input id="playlistImportInput" class="hidden-input" type="file" accept=".json,application/json" aria-hidden="true" tabindex="-1">
-        <div class="actions">
-          <button id="playlistAddButton" type="button">現在の状態を追加</button>
-          <button id="playlistPlayButton" type="button">プレイリスト再生</button>
-          <button id="playlistStopButton" type="button">停止</button>
-        </div>
-        <div class="actions">
-          <input id="playlistName" class="playlist-name" type="text" placeholder="プレイリスト名">
-          <button id="playlistSaveButton" type="button">保存</button>
-        </div>
-        <div class="actions">
-          <select id="playlistSelect" class="playlist-select"></select>
-          <button id="playlistLoadButton" type="button">読込</button>
-          <button id="playlistDeleteButton" type="button">削除</button>
-        </div>
-        <div class="actions">
-          <button id="playlistExportButton" type="button">エクスポート（JSON）</button>
-          <button id="playlistImportButton" type="button">インポート</button>
-        </div>
-        <ul id="playlistList" class="file-list playlist-list"></ul>
-        <p class="lead">エントリーごとに「ループ／一回だけ」を切り替えられます。再生中は N キーで次へ、P キーで前へ。JSONで書き出せば、VR版など他の環境へ持っていけます。</p>
-      </section>
-
-      <section class="section">
         <div class="section-title">Folder Play</div>
         <input id="folderPlayInput" class="hidden-input" type="file" webkitdirectory aria-hidden="true" tabindex="-1">
         <div class="actions">
@@ -861,6 +819,16 @@
           <button id="folderPlayStopButton" type="button">停止</button>
         </div>
         <p class="lead">指定したフォルダ以下の動画を、サブフォルダも含めて名前順に一回ずつ再生します（登録・サムネイル生成はしません）。</p>
+      </section>
+
+      <section class="section">
+        <div class="section-title">Settings</div>
+        <input id="settingsImportInput" class="hidden-input" type="file" accept=".json,application/json" aria-hidden="true" tabindex="-1">
+        <div class="actions">
+          <button id="settingsExportButton" type="button">設定をエクスポート（JSON）</button>
+          <button id="settingsImportButton" type="button">設定をインポート</button>
+        </div>
+        <p class="lead">ループ単位と再生モード、ファイルごとの回転・ズーム・カット印をJSONで書き出します。VR版など他の環境への持ち出し用です。</p>
       </section>
     </aside>
 
@@ -932,7 +900,8 @@
         rotation: 0,
         zoom: 1,
         directItem: null,
-        playlist: { entries: [], name: "", active: false, index: 0 },
+        loopModes: {},
+        finishedUnit: null,
         folderPlay: { active: false, files: [], index: 0, name: "", item: null, currentUrl: "" }
       };
 
@@ -1318,301 +1287,6 @@
         setStatus(found.marks.length ? `${item.name}：カットを${found.marks.length}件検出しました。` : `${item.name}：カットは検出されませんでした。`);
       }
 
-      // プレイリスト：再生するファイル（または区間）・回転・ズーム・再生モード
-      // （ループ／一回だけ）を並べたもの。LocalStorageに名前付きで保存でき、
-      // JSONファイルへ書き出して他の環境（VR版など）へ持ち出せる。
-      const PLAYLISTS_STORAGE_KEY = "mp4LoopViewer.playlists.v1";
-      const PLAYLIST_DRAFT_KEY = "mp4LoopViewer.playlistDraft.v1";
-      let savedPlaylists = loadSavedPlaylists();
-
-      function loadSavedPlaylists() {
-        try {
-          const parsed = JSON.parse(localStorage.getItem(PLAYLISTS_STORAGE_KEY) || "{}");
-          return parsed && typeof parsed === "object" ? parsed : {};
-        } catch (error) {
-          return {};
-        }
-      }
-
-      function persistSavedPlaylists() {
-        try {
-          localStorage.setItem(PLAYLISTS_STORAGE_KEY, JSON.stringify(savedPlaylists));
-        } catch (error) {
-          console.warn("Could not save playlists", error);
-        }
-      }
-
-      function persistPlaylistDraft() {
-        try {
-          localStorage.setItem(PLAYLIST_DRAFT_KEY, JSON.stringify({ name: state.playlist.name, entries: state.playlist.entries }));
-        } catch (error) {
-          console.warn("Could not save playlist draft", error);
-        }
-      }
-
-      function sanitizeEntry(raw) {
-        if (!raw || typeof raw !== "object") return null;
-        const name = String(raw.name || "");
-        const size = Number(raw.size) || 0;
-        if (!name || !size) return null;
-        const lastModified = Number(raw.lastModified) || 0;
-        return {
-          key: typeof raw.key === "string" && raw.key ? raw.key : `v1|${name}|${size}|${lastModified}`,
-          name,
-          size,
-          lastModified,
-          segStart: raw.segStart == null ? null : Number(raw.segStart),
-          segEnd: raw.segEnd == null ? null : Number(raw.segEnd),
-          rotation: Number(raw.rotation) || 0,
-          zoom: Number(raw.zoom) || 1,
-          mode: raw.mode === "once" ? "once" : "loop"
-        };
-      }
-
-      function restorePlaylistDraft() {
-        try {
-          const draft = JSON.parse(localStorage.getItem(PLAYLIST_DRAFT_KEY) || "null");
-          if (draft && Array.isArray(draft.entries)) {
-            state.playlist.name = String(draft.name || "");
-            state.playlist.entries = draft.entries.map(sanitizeEntry).filter(Boolean);
-          }
-        } catch (error) { /* noop */ }
-      }
-      restorePlaylistDraft();
-
-      function playlistLabel(entry) {
-        return entry.segStart != null
-          ? `${entry.name} [${formatClock(entry.segStart)}–${formatClock(entry.segEnd)}]`
-          : entry.name;
-      }
-
-      function resolveEntryItem(entry) {
-        return state.files.find(it => {
-          if (!it.file || fileCacheKey(it.file) !== entry.key) return false;
-          if (entry.segStart == null) return it.segCount === 1;
-          return it.segStart === entry.segStart && it.segEnd === entry.segEnd;
-        }) || null;
-      }
-
-      function addCurrentToPlaylist() {
-        const item = getCurrentFile();
-        if (!item || !item.file) {
-          setStatus("追加できる再生中の動画がありません。", true);
-          return;
-        }
-        const entry = sanitizeEntry({
-          key: fileCacheKey(item.file),
-          name: item.name,
-          size: item.file.size,
-          lastModified: item.file.lastModified,
-          segStart: item.segCount > 1 ? item.segStart : null,
-          segEnd: item.segCount > 1 ? item.segEnd : null,
-          rotation: state.rotation || 0,
-          zoom: state.zoom || 1,
-          mode: "loop"
-        });
-        state.playlist.entries.push(entry);
-        persistPlaylistDraft();
-        renderPlaylist();
-        setStatus(`プレイリストに追加しました：${playlistLabel(entry)}（${state.playlist.entries.length}件目）`);
-      }
-
-      function saveNamedPlaylist() {
-        const name = els.playlistName.value.trim();
-        if (!name) {
-          setStatus("プレイリスト名を入力してください。", true);
-          return;
-        }
-        if (!state.playlist.entries.length) {
-          setStatus("エントリーがありません。先に「現在の状態を追加」してください。", true);
-          return;
-        }
-        state.playlist.name = name;
-        savedPlaylists[name] = { name, entries: state.playlist.entries.map(e => ({ ...e })) };
-        persistSavedPlaylists();
-        persistPlaylistDraft();
-        renderPlaylist();
-        setStatus(`プレイリスト「${name}」を保存しました（${state.playlist.entries.length}件）。`);
-      }
-
-      function loadNamedPlaylist() {
-        const name = els.playlistSelect.value;
-        const stored = name ? savedPlaylists[name] : null;
-        if (!stored) {
-          setStatus("読み込むプレイリストを選んでください。", true);
-          return;
-        }
-        state.playlist.name = stored.name || name;
-        state.playlist.entries = (stored.entries || []).map(sanitizeEntry).filter(Boolean);
-        state.playlist.active = false;
-        state.playlist.index = 0;
-        els.playlistName.value = state.playlist.name;
-        persistPlaylistDraft();
-        renderPlaylist();
-        setStatus(`プレイリスト「${state.playlist.name}」を読み込みました（${state.playlist.entries.length}件）。`);
-      }
-
-      function deleteNamedPlaylist() {
-        const name = els.playlistSelect.value;
-        if (!name || !savedPlaylists[name]) {
-          setStatus("削除するプレイリストを選んでください。", true);
-          return;
-        }
-        delete savedPlaylists[name];
-        persistSavedPlaylists();
-        renderPlaylist();
-        setStatus(`プレイリスト「${name}」を削除しました。`);
-      }
-
-      function playlistExportData() {
-        return {
-          app: "mp4-loop-viewer",
-          kind: "playlist",
-          version: 1,
-          name: state.playlist.name || els.playlistName.value.trim() || "playlist",
-          exportedAt: new Date().toISOString(),
-          entries: state.playlist.entries
-        };
-      }
-
-      async function exportPlaylist() {
-        if (!state.playlist.entries.length) {
-          setStatus("エクスポートするエントリーがありません。", true);
-          return;
-        }
-        const data = playlistExportData();
-        state.playlist.name = data.name;
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-        const filename = `${data.name}.playlist.json`;
-        if (window.showSaveFilePicker) {
-          try {
-            const handle = await window.showSaveFilePicker({
-              suggestedName: filename,
-              types: [{ description: "Playlist JSON", accept: { "application/json": [".json"] } }]
-            });
-            const writable = await handle.createWritable();
-            await writable.write(blob);
-            await writable.close();
-            setStatus(`プレイリストを書き出しました：${filename}`);
-            return;
-          } catch (error) {
-            if (error && error.name === "AbortError") return;
-            console.warn("Save picker failed, falling back to download", error);
-          }
-        }
-        const anchor = document.createElement("a");
-        anchor.href = URL.createObjectURL(blob);
-        anchor.download = filename;
-        anchor.click();
-        window.setTimeout(() => URL.revokeObjectURL(anchor.href), 4000);
-        setStatus(`プレイリストを書き出しました：${filename}`);
-      }
-
-      async function importPlaylistFile(file) {
-        try {
-          const data = JSON.parse(await file.text());
-          if (!data || !Array.isArray(data.entries)) throw new Error("entries not found");
-          const entries = data.entries.map(sanitizeEntry).filter(Boolean);
-          if (!entries.length) throw new Error("no valid entries");
-          state.playlist.name = String(data.name || "playlist");
-          state.playlist.entries = entries;
-          state.playlist.active = false;
-          state.playlist.index = 0;
-          els.playlistName.value = state.playlist.name;
-          savedPlaylists[state.playlist.name] = { name: state.playlist.name, entries: entries.map(e => ({ ...e })) };
-          persistSavedPlaylists();
-          persistPlaylistDraft();
-          renderPlaylist();
-          setStatus(`プレイリスト「${state.playlist.name}」をインポートしました（${entries.length}件）。`);
-        } catch (error) {
-          console.warn("Playlist import failed", error);
-          setStatus("プレイリストJSONを読み込めませんでした。", true);
-        }
-      }
-
-      function stopPlaylist() {
-        state.playlist.active = false;
-        state.directItem = null;
-      }
-
-      async function playPlaylistAt(index) {
-        const entry = state.playlist.entries[index];
-        if (!entry) {
-          stopPlaylist();
-          setStatus("プレイリストの再生が終わりました。");
-          render();
-          return;
-        }
-        const item = resolveEntryItem(entry);
-        if (!item) {
-          setStatus(`プレイリスト：${entry.name} が現在のファイル一覧に見つかりません（次へ進みます）。`, true);
-          return playPlaylistAt(index + 1);
-        }
-        state.playlist.active = true;
-        state.playlist.index = index;
-        state.activeLoop = null;
-        stopFolderPlay();
-        state.directItem = item;
-        await playCurrent(true);
-        state.rotation = entry.rotation || 0;
-        state.zoom = entry.zoom || 1;
-        applyRotation();
-        setStatus(`プレイリスト再生中（${index + 1}/${state.playlist.entries.length}）：${playlistLabel(entry)}`);
-        render();
-      }
-
-      function startPlaylist() {
-        if (!state.playlist.entries.length) {
-          setStatus("プレイリストにエントリーがありません。", true);
-          return;
-        }
-        playPlaylistAt(0);
-      }
-
-      function advancePlaylist(manual) {
-        if (!state.playlist.active) return;
-        const entry = state.playlist.entries[state.playlist.index];
-        if (!manual && entry && entry.mode === "loop") {
-          playPlaylistAt(state.playlist.index);
-          return;
-        }
-        playPlaylistAt(state.playlist.index + 1);
-      }
-
-      function prevPlaylist() {
-        if (!state.playlist.active || state.playlist.index <= 0) return;
-        playPlaylistAt(state.playlist.index - 1);
-      }
-
-      function renderPlaylist() {
-        const names = Object.keys(savedPlaylists);
-        const selected = els.playlistSelect.value;
-        els.playlistSelect.innerHTML = names.length
-          ? names.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("")
-          : '<option value="">（保存済みなし）</option>';
-        if (names.includes(selected)) els.playlistSelect.value = selected;
-        if (!state.playlist.entries.length) {
-          els.playlistList.innerHTML = '<li class="status">エントリーなし</li>';
-          return;
-        }
-        els.playlistList.innerHTML = state.playlist.entries.map((entry, i) => {
-          const found = !!resolveEntryItem(entry);
-          const playing = state.playlist.active && state.playlist.index === i;
-          return `
-          <li class="file-row${playing ? " playing" : ""}">
-            <span class="num">${i + 1}</span>
-            <div class="file-meta">
-              <div class="file-name" title="${escapeHtml(entry.name)}">${escapeHtml(playlistLabel(entry))}</div>
-              <div class="file-note">${entry.rotation ? `回転 ${entry.rotation}° ・ ` : ""}ズーム ${Math.round((entry.zoom || 1) * 100)}%${found ? "" : " ・ ファイル未読込"}</div>
-            </div>
-            <button type="button" class="mini-btn mode-${entry.mode}" data-act="mode" data-i="${i}" title="ループ／一回だけ を切り替え">${entry.mode === "loop" ? "ループ" : "一回だけ"}</button>
-            <button type="button" class="mini-btn" data-act="up" data-i="${i}" title="上へ">↑</button>
-            <button type="button" class="mini-btn" data-act="down" data-i="${i}" title="下へ">↓</button>
-            <button type="button" class="mini-btn" data-act="remove" data-i="${i}" title="エントリーを削除">×</button>
-          </li>`;
-        }).join("");
-      }
-
       // フォルダ連続再生：指定フォルダ以下の動画（サブフォルダ含む）を名前順に
       // 一回ずつ再生する。登録やサムネイル生成はせず、その場限りのアイテムで再生する。
       function stopFolderPlay() {
@@ -1666,7 +1340,6 @@
       }
 
       function beginFolderPlay(files, name) {
-        stopPlaylist();
         state.folderPlay.files = files;
         state.folderPlay.name = name;
         setStatus(`フォルダ「${name}」の動画${files.length}件を連続再生します。`);
@@ -1716,6 +1389,109 @@
         }
       }
 
+      // 設定一式の書き出し／読み込み：ループ単位＋再生モードと、ファイルごとの
+      // 回転・ズーム・カット印をJSONにする。VR版など他の環境との共通フォーマット。
+      function collectSettingsData() {
+        const loopUnits = [];
+        for (let key = 1; key <= 9; key++) {
+          const steps = String(state.loops[key] || "");
+          if (steps) loopUnits.push({ key, steps, mode: state.loopModes[key] === "once" ? "once" : "loop" });
+        }
+        const fileKeys = new Set([...Object.keys(savedRotations), ...Object.keys(savedCuts)]);
+        const files = [...fileKeys].map(key => {
+          const parts = key.split("|");
+          const rot = savedRotations[key];
+          return {
+            key,
+            name: parts[1] || "",
+            size: Number(parts[2]) || 0,
+            lastModified: Number(parts[3]) || 0,
+            rotation: typeof rot === "number" ? rot : (rot && typeof rot.r === "number" ? rot.r : 0),
+            zoom: typeof rot === "number" ? 1 : (rot && typeof rot.z === "number" ? rot.z : 1),
+            cuts: Array.isArray(savedCuts[key]) ? savedCuts[key].slice() : []
+          };
+        });
+        return {
+          app: "mp4-loop-viewer",
+          kind: "settings",
+          version: 1,
+          exportedAt: new Date().toISOString(),
+          loopUnits,
+          files
+        };
+      }
+
+      async function exportSettings() {
+        const data = collectSettingsData();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const filename = "mp4-loop-viewer-settings.json";
+        if (window.showSaveFilePicker) {
+          try {
+            const handle = await window.showSaveFilePicker({
+              suggestedName: filename,
+              types: [{ description: "Settings JSON", accept: { "application/json": [".json"] } }]
+            });
+            const writable = await handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            setStatus(`設定を書き出しました：${filename}（ループ単位${data.loopUnits.length}件・ファイル設定${data.files.length}件）`);
+            return;
+          } catch (error) {
+            if (error && error.name === "AbortError") return;
+            console.warn("Save picker failed, falling back to download", error);
+          }
+        }
+        const anchor = document.createElement("a");
+        anchor.href = URL.createObjectURL(blob);
+        anchor.download = filename;
+        anchor.click();
+        window.setTimeout(() => URL.revokeObjectURL(anchor.href), 4000);
+        setStatus(`設定を書き出しました：${filename}（ループ単位${data.loopUnits.length}件・ファイル設定${data.files.length}件）`);
+      }
+
+      async function importSettingsFile(file) {
+        try {
+          const data = JSON.parse(await file.text());
+          if (!data || data.app !== "mp4-loop-viewer" || data.kind !== "settings" || !Array.isArray(data.loopUnits) || !Array.isArray(data.files)) {
+            throw new Error("unexpected format");
+          }
+          for (const unit of data.loopUnits) {
+            const key = Number(unit && unit.key);
+            if (key >= 1 && key <= 9) {
+              state.loops[key] = String(unit.steps || "").replace(/[^1-9]/g, "");
+              if (unit.mode === "once") state.loopModes[key] = "once";
+              else delete state.loopModes[key];
+            }
+          }
+          saveSettings();
+          const affected = new Set();
+          for (const entry of data.files) {
+            if (!entry || typeof entry.key !== "string" || !entry.key) continue;
+            const rotation = Number(entry.rotation) || 0;
+            const zoom = Number(entry.zoom) || 1;
+            if (rotation || zoom !== 1) savedRotations[entry.key] = { r: rotation, z: zoom };
+            if (Array.isArray(entry.cuts)) {
+              const marks = [...new Set(entry.cuts.map(Number).filter(n => Number.isFinite(n) && n > 0))].sort((a, b) => a - b);
+              const changed = JSON.stringify(marks) !== JSON.stringify(savedCuts[entry.key] || []);
+              savedCuts[entry.key] = marks;
+              if (changed && sourceItems(entry.key).length) affected.add(entry.key);
+            }
+          }
+          persistRotations();
+          persistCuts();
+          for (const key of affected) {
+            const item = sourceItems(key)[0];
+            const insert = rebuildSourceSegments(key, item.meta?.duration || 0);
+            if (insert.length) generateThumbnails(insert);
+          }
+          render();
+          setStatus(`設定をインポートしました（ループ単位${data.loopUnits.length}件・ファイル設定${data.files.length}件）。`);
+        } catch (error) {
+          console.warn("Settings import failed", error);
+          setStatus("設定JSONを読み込めませんでした。", true);
+        }
+      }
+
       const els = {
         app: document.getElementById("app"),
         stage: document.getElementById("stage"),
@@ -1724,21 +1500,12 @@
         fileInput: document.getElementById("fileInput"),
         appendInput: document.getElementById("appendInput"),
         fileList: document.getElementById("fileList"),
-        playlistName: document.getElementById("playlistName"),
-        playlistSelect: document.getElementById("playlistSelect"),
-        playlistList: document.getElementById("playlistList"),
-        playlistImportInput: document.getElementById("playlistImportInput"),
-        playlistAddButton: document.getElementById("playlistAddButton"),
-        playlistPlayButton: document.getElementById("playlistPlayButton"),
-        playlistStopButton: document.getElementById("playlistStopButton"),
-        playlistSaveButton: document.getElementById("playlistSaveButton"),
-        playlistLoadButton: document.getElementById("playlistLoadButton"),
-        playlistDeleteButton: document.getElementById("playlistDeleteButton"),
-        playlistExportButton: document.getElementById("playlistExportButton"),
-        playlistImportButton: document.getElementById("playlistImportButton"),
         folderPlayButton: document.getElementById("folderPlayButton"),
         folderPlayStopButton: document.getElementById("folderPlayStopButton"),
         folderPlayInput: document.getElementById("folderPlayInput"),
+        settingsExportButton: document.getElementById("settingsExportButton"),
+        settingsImportButton: document.getElementById("settingsImportButton"),
+        settingsImportInput: document.getElementById("settingsImportInput"),
         loopEditors: document.getElementById("loopEditors"),
         cards: document.getElementById("cards"),
         overlayCards: document.getElementById("overlayCards"),
@@ -1771,6 +1538,12 @@
           const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
           if (saved && typeof saved === "object") {
             state.loops = { ...DEFAULT_LOOPS, ...(saved.loops || {}) };
+            state.loopModes = {};
+            if (saved.loopModes && typeof saved.loopModes === "object") {
+              for (let key = 1; key <= 9; key++) {
+                if (saved.loopModes[key] === "once") state.loopModes[key] = "once";
+              }
+            }
             state.uiVisible = saved.uiVisible !== false;
             if (Number.isInteger(saved.activeLoop) && saved.activeLoop >= 1 && saved.activeLoop <= 9) {
               state.activeLoop = saved.activeLoop;
@@ -1784,6 +1557,7 @@
       function saveSettings() {
         const payload = {
           loops: state.loops,
+          loopModes: state.loopModes,
           uiVisible: state.uiVisible,
           activeLoop: state.activeLoop
         };
@@ -1856,7 +1630,6 @@
         state.stepIndex = 0;
         state.rotation = 0;
         state.zoom = 1;
-        stopPlaylist();
         stopFolderPlay();
         els.player.removeAttribute("src");
         resetPlayerSizing();
@@ -2682,8 +2455,8 @@
       }
 
       function startLoop(key, restart = true) {
-        stopPlaylist();
         stopFolderPlay();
+        state.finishedUnit = null;
         const numericKey = Number(key);
         if (!state.files.length) {
           setStatus("先にMP4ファイルを選択してください。", true);
@@ -2726,7 +2499,7 @@
         }
         try {
           await els.player.play();
-          if (!state.playlist.active && !state.folderPlay.active) setStatus(`キー${state.activeLoop}を再生中。`);
+          if (!state.folderPlay.active) setStatus(`キー${state.activeLoop}を再生中。`);
         } catch (error) {
           setStatus("再生を開始できませんでした。カードまたはボタンをもう一度操作してください。", true);
         }
@@ -2764,17 +2537,22 @@
       }
 
       function playNextStep() {
-        if (state.playlist.active) {
-          advancePlaylist(false);
-          return;
-        }
         if (state.folderPlay.active) {
           advanceFolder();
           return;
         }
         if (!state.activeLoop) return;
+        if (state.finishedUnit === state.activeLoop) return;
         const { steps } = parseLoop(state.activeLoop);
         if (!steps.length) return;
+        const isLastStep = state.stepIndex >= steps.length - 1;
+        if (isLastStep && state.loopModes[state.activeLoop] === "once") {
+          state.finishedUnit = state.activeLoop;
+          els.player.pause();
+          setStatus(`キー${state.activeLoop}の再生が終わりました（一回だけ）。`);
+          render();
+          return;
+        }
         state.stepIndex = (state.stepIndex + 1) % steps.length;
         playCurrent(true);
       }
@@ -2835,7 +2613,6 @@
         renderEditors();
         renderCards();
         renderNow();
-        renderPlaylist();
         renderOverlayVisibility();
       }
 
@@ -2992,9 +2769,18 @@
           row.innerHTML = `
             <label for="loop-${key}">キー${key}</label>
             <input id="loop-${key}" inputmode="numeric" autocomplete="off" value="${escapeHtml(state.loops[key] || "")}" aria-label="キー${key}のループ単位">
+            <button type="button" class="mini-btn ${state.loopModes[key] === "once" ? "mode-once" : "mode-loop"}" title="このループ単位の再生モード（ループ／一回だけ）">${state.loopModes[key] === "once" ? "一回だけ" : "ループ"}</button>
           `;
           const input = row.querySelector("input");
           input.addEventListener("input", () => updateLoop(key, input.value));
+          const modeButton = row.querySelector("button");
+          modeButton.addEventListener("click", () => {
+            state.loopModes[key] = state.loopModes[key] === "once" ? "loop" : "once";
+            if (state.loopModes[key] === "loop") delete state.loopModes[key];
+            saveSettings();
+            renderEditors();
+            renderNow();
+          });
           els.loopEditors.appendChild(row);
         }
       }
@@ -3075,12 +2861,6 @@
           els.nowLoop.textContent = `フォルダ連続再生「${state.folderPlay.name}」 ${state.folderPlay.index + 1}/${state.folderPlay.files.length}`;
           return;
         }
-        if (state.playlist.active && item) {
-          const entry = state.playlist.entries[state.playlist.index];
-          els.nowPlaying.textContent = `現在再生中: ${entry ? playlistLabel(entry) : item.name}`;
-          els.nowLoop.textContent = `プレイリスト${state.playlist.name ? `「${state.playlist.name}」` : ""} ${state.playlist.index + 1}/${state.playlist.entries.length}${entry ? `（${entry.mode === "loop" ? "ループ" : "一回だけ"}）` : ""}`;
-          return;
-        }
         if (!item) {
           els.nowPlaying.textContent = "現在再生中: なし";
           els.nowLoop.textContent = state.activeLoop ? `ループ: キー${state.activeLoop}` : "ループ: なし";
@@ -3089,7 +2869,7 @@
         const { raw, steps } = parseLoop(state.activeLoop);
         const videoNumber = steps[state.stepIndex];
         els.nowPlaying.textContent = `現在再生中: ${videoNumber}: ${displayName(item)}`;
-        els.nowLoop.textContent = `ループ: キー${state.activeLoop} (${raw}) step ${state.stepIndex + 1}/${steps.length}`;
+        els.nowLoop.textContent = `ループ: キー${state.activeLoop} (${raw}) step ${state.stepIndex + 1}/${steps.length}${state.loopModes[state.activeLoop] === "once" ? " ・ 一回だけ" : ""}`;
       }
 
       function getKeyNumber(event) {
@@ -3155,12 +2935,6 @@
         } else if (event.key.toLowerCase() === "c" && !event.ctrlKey && !event.metaKey && !event.altKey) {
           event.preventDefault();
           addCutMarkAtCurrentTime();
-        } else if (event.key.toLowerCase() === "n" && !event.ctrlKey && !event.metaKey && !event.altKey) {
-          event.preventDefault();
-          advancePlaylist(true);
-        } else if (event.key.toLowerCase() === "p" && !event.ctrlKey && !event.metaKey && !event.altKey) {
-          event.preventDefault();
-          prevPlaylist();
         } else if (event.key.toLowerCase() === "h") {
           event.preventDefault();
           toggleUi();
@@ -3218,44 +2992,14 @@
         els.pickerCancel.addEventListener("click", () => closePicker());
         els.sheetModal.addEventListener("click", closeSheetModal);
         els.clearFilesButton.addEventListener("click", clearFiles);
-        els.playlistAddButton.addEventListener("click", addCurrentToPlaylist);
-        els.playlistPlayButton.addEventListener("click", startPlaylist);
-        els.playlistStopButton.addEventListener("click", () => {
-          stopPlaylist();
-          els.player.pause();
-          render();
-          setStatus("プレイリスト再生を停止しました。");
-        });
-        els.playlistSaveButton.addEventListener("click", saveNamedPlaylist);
-        els.playlistLoadButton.addEventListener("click", loadNamedPlaylist);
-        els.playlistDeleteButton.addEventListener("click", deleteNamedPlaylist);
-        els.playlistExportButton.addEventListener("click", exportPlaylist);
-        els.playlistImportButton.addEventListener("click", () => els.playlistImportInput.click());
-        els.playlistImportInput.addEventListener("change", event => {
+        els.folderPlayButton.addEventListener("click", startFolderPlay);
+        els.settingsExportButton.addEventListener("click", exportSettings);
+        els.settingsImportButton.addEventListener("click", () => els.settingsImportInput.click());
+        els.settingsImportInput.addEventListener("change", event => {
           const file = event.target.files[0];
-          if (file) importPlaylistFile(file);
+          if (file) importSettingsFile(file);
           event.target.value = "";
         });
-        els.playlistList.addEventListener("click", event => {
-          const button = event.target.closest("button[data-act]");
-          if (!button) return;
-          const entries = state.playlist.entries;
-          const i = Number(button.dataset.i);
-          if (!entries[i]) return;
-          if (button.dataset.act === "mode") {
-            entries[i].mode = entries[i].mode === "loop" ? "once" : "loop";
-          } else if (button.dataset.act === "up" && i > 0) {
-            [entries[i - 1], entries[i]] = [entries[i], entries[i - 1]];
-          } else if (button.dataset.act === "down" && i < entries.length - 1) {
-            [entries[i + 1], entries[i]] = [entries[i], entries[i + 1]];
-          } else if (button.dataset.act === "remove") {
-            entries.splice(i, 1);
-          }
-          persistPlaylistDraft();
-          renderPlaylist();
-        });
-        els.playlistName.value = state.playlist.name || "";
-        els.folderPlayButton.addEventListener("click", startFolderPlay);
         els.folderPlayStopButton.addEventListener("click", () => {
           stopFolderPlay();
           els.player.pause();
