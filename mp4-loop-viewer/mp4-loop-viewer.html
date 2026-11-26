@@ -218,7 +218,8 @@
     }
 
     .vcard {
-      display: grid;
+      display: flex;
+      flex-direction: column;
       gap: 4px;
       padding: 6px;
       border: 1px solid rgba(255,255,255,.16);
@@ -302,7 +303,7 @@
     /* 拡大時もサムネイルは通常カードと同じ幅に留める（横に伸ばさない） */
     .vcard.expanded .vcard-thumb {
       width: 208px;
-      justify-self: start;
+      align-self: flex-start;
     }
 
     .vcard-thumb.tile {
@@ -379,6 +380,14 @@
       position: absolute;
       top: 2px;
       right: 2px;
+      width: 22px;
+      height: 22px;
+      min-height: 22px;
+      background: rgba(0, 0, 0, .62);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, .55);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, .45);
+      z-index: 2;
     }
 
     .vmember.drop-before {
