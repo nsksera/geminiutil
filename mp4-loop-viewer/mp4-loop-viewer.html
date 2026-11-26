@@ -1273,8 +1273,46 @@
         rest.splice(at, 0, ...insert);
         state.files = rest;
         renumberFiles();
+        syncCardMembersForSource(key);
         render();
         return insert;
+      }
+
+      // 区間の再構築にカード側の指定を追従させる。
+      // 「ファイル全体」で指定したメンバーは、区間に分かれたら全区間へ展開する
+      // （読み込み直後のカット検出で全体指定が宙に浮いて再生できなくなるのを防ぐ）。
+      // 境界が変わって対応する区間が無くなったメンバーは落とす。
+      function syncCardMembersForSource(key) {
+        const segments = sourceItems(key);
+        if (!segments.length) return;
+        let changed = false;
+        for (const cardKey of Object.keys(state.cards)) {
+          const card = state.cards[cardKey];
+          const before = JSON.stringify(card.members.map(m => [m.key, m.segStart, m.segEnd]));
+          const next = [];
+          for (const member of card.members) {
+            if (member.key !== key) {
+              next.push(member);
+            } else if (member.segStart == null) {
+              if (segments.length === 1 && segments[0].segCount === 1) {
+                next.push(member);
+              } else {
+                for (const seg of segments) {
+                  const expanded = memberFromItem(seg);
+                  if (expanded) next.push(expanded);
+                }
+              }
+            } else if (segments.some(seg => seg.segStart === member.segStart && seg.segEnd === member.segEnd)) {
+              next.push(member);
+            }
+          }
+          const after = JSON.stringify(next.map(m => [m.key, m.segStart, m.segEnd]));
+          if (before !== after) {
+            card.members = next.slice(0, MAX_CARD_MEMBERS);
+            changed = true;
+          }
+        }
+        if (changed) saveSettings();
       }
 
       function probeDuration(item) {
