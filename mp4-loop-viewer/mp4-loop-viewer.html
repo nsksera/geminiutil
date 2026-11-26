@@ -184,6 +184,32 @@
       white-space: nowrap;
     }
 
+    .seekbar-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 12px;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 8px;
+      background: rgba(8, 10, 13, .72);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    .seekbar-row input[type="range"] {
+      flex: 1;
+      min-width: 0;
+      accent-color: #7cc4ff;
+      cursor: pointer;
+    }
+
+    .seek-time {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
     .overlay-cards {
       display: grid;
       grid-template-columns: repeat(9, minmax(92px, 1fr));
@@ -846,6 +872,10 @@
             <div class="main" id="nowPlaying">現在再生中: なし</div>
             <div class="sub" id="nowLoop">ループ: なし</div>
           </div>
+          <div class="seekbar-row" id="seekRow">
+            <input id="seekBar" type="range" min="0" max="0" step="0.01" value="0" aria-label="シークバー">
+            <span id="seekTime" class="seek-time">0:00 / 0:00</span>
+          </div>
           <div id="overlayCards" class="overlay-cards"></div>
         </div>
       </div>
@@ -902,6 +932,7 @@
         directItem: null,
         loopModes: {},
         finishedUnit: null,
+        seekScrubbing: false,
         folderPlay: { active: false, files: [], index: 0, name: "", item: null, currentUrl: "" }
       };
 
@@ -1517,6 +1548,9 @@
         status: document.getElementById("status"),
         nowPlaying: document.getElementById("nowPlaying"),
         nowLoop: document.getElementById("nowLoop"),
+        seekRow: document.getElementById("seekRow"),
+        seekBar: document.getElementById("seekBar"),
+        seekTime: document.getElementById("seekTime"),
         overlay: document.getElementById("overlay"),
         emptyState: document.getElementById("emptyState"),
         sheetModal: document.getElementById("sheetModal"),
@@ -2854,22 +2888,51 @@
         return `<span class="mini-thumb mini-fallback">${step}</span>`;
       }
 
+      function seekRange() {
+        const item = getCurrentFile();
+        if (!item) return null;
+        const start = item.segCount > 1 ? item.segStart : 0;
+        const end = item.segCount > 1 ? item.segEnd : (Number.isFinite(els.player.duration) ? els.player.duration : 0);
+        if (!(end > start)) return null;
+        return { start, end };
+      }
+
+      function updateSeekBar() {
+        const range = seekRange();
+        if (!range) {
+          els.seekRow.style.display = "none";
+          return;
+        }
+        els.seekRow.style.display = "";
+        els.seekBar.min = String(range.start);
+        els.seekBar.max = String(range.end);
+        if (!state.seekScrubbing) {
+          const current = Number.isFinite(els.player.currentTime) ? els.player.currentTime : range.start;
+          els.seekBar.value = String(Math.min(Math.max(current, range.start), range.end));
+        }
+        const position = Number(els.seekBar.value) - range.start;
+        els.seekTime.textContent = `${formatClock(position)} / ${formatClock(range.end - range.start)}`;
+      }
+
       function renderNow() {
         const item = getCurrentFile();
         if (state.folderPlay.active && item) {
           els.nowPlaying.textContent = `現在再生中: ${item.name}`;
           els.nowLoop.textContent = `フォルダ連続再生「${state.folderPlay.name}」 ${state.folderPlay.index + 1}/${state.folderPlay.files.length}`;
+          updateSeekBar();
           return;
         }
         if (!item) {
           els.nowPlaying.textContent = "現在再生中: なし";
           els.nowLoop.textContent = state.activeLoop ? `ループ: キー${state.activeLoop}` : "ループ: なし";
+          updateSeekBar();
           return;
         }
         const { raw, steps } = parseLoop(state.activeLoop);
         const videoNumber = steps[state.stepIndex];
         els.nowPlaying.textContent = `現在再生中: ${videoNumber}: ${displayName(item)}`;
         els.nowLoop.textContent = `ループ: キー${state.activeLoop} (${raw}) step ${state.stepIndex + 1}/${steps.length}${state.loopModes[state.activeLoop] === "once" ? " ・ 一回だけ" : ""}`;
+        updateSeekBar();
       }
 
       function getKeyNumber(event) {
@@ -3022,6 +3085,16 @@
         els.restartButton.addEventListener("click", restartActiveLoop);
         els.toggleUiButton.addEventListener("click", toggleUi);
         els.player.addEventListener("loadedmetadata", schedulePlayerFit);
+        els.player.addEventListener("loadedmetadata", updateSeekBar);
+        els.player.addEventListener("timeupdate", updateSeekBar);
+        els.player.addEventListener("seeked", updateSeekBar);
+        els.seekBar.addEventListener("pointerdown", () => { state.seekScrubbing = true; });
+        window.addEventListener("pointerup", () => { state.seekScrubbing = false; });
+        els.seekBar.addEventListener("input", () => {
+          if (!seekRange()) return;
+          els.player.currentTime = Number(els.seekBar.value);
+          updateSeekBar();
+        });
         els.player.addEventListener("ended", playNextStep);
         window.setInterval(() => {
           const item = getCurrentFile();
