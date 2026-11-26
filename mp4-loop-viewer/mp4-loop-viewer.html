@@ -1090,7 +1090,7 @@
 
       function resolveMember(member) {
         const segmentMatches = it => member.segStart == null
-          ? it.segCount === 1
+          ? (it.segCount ?? 1) === 1
           : it.segStart === member.segStart && it.segEnd === member.segEnd;
         let item = state.files.find(it => it.file && fileCacheKey(it.file) === member.key && segmentMatches(it));
         if (item) return item;
@@ -1886,6 +1886,17 @@
       }
 
       function applyLoadedItems(nextItems, mode) {
+        // どの経路で作られたアイテムでも、区間まわりの項目が欠けていたら既定値でそろえる
+        // （欠けるとカード照合とカット検出の対象から外れてしまう）。
+        for (const item of nextItems) {
+          if (item.segCount == null) {
+            item.segStart = 0;
+            item.segEnd = null;
+            item.segIndex = 0;
+            item.segCount = 1;
+          }
+          if (item.cutsSettled == null) item.cutsSettled = false;
+        }
         if (mode === "replace") {
           revokeFiles();
           state.files = nextItems;
@@ -1959,7 +1970,7 @@
         for (const item of items) {
           if (!state.files.includes(item)) continue;
           let targets = [item];
-          if (item.segCount === 1 && !item.cutsSettled) {
+          if ((item.segCount ?? 1) === 1 && !item.cutsSettled) {
             targets = await settleItemCuts(item);
           }
           for (const target of targets) {
@@ -2613,7 +2624,12 @@
           sheet: cand.sheet || "",
           sheetError: !!cand.sheetError,
           meta: cand.meta || null,
-          loadError: ""
+          loadError: "",
+          segStart: 0,
+          segEnd: null,
+          segIndex: 0,
+          segCount: 1,
+          cutsSettled: false
         }));
         for (const cand of picker.candidates) {
           if (!chosen.includes(cand)) {
