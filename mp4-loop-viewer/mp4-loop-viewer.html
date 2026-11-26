@@ -291,6 +291,119 @@
       color: #fff;
     }
 
+    .vcard.expanded {
+      grid-column: 1 / -1;
+    }
+
+    .vcard-thumb.tile {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px;
+      height: 54px;
+    }
+
+    .tile-cell {
+      overflow: hidden;
+      border-radius: 3px;
+    }
+
+    .tile-cell img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .tile-fallback {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 2px;
+      font-size: 9px;
+      line-height: 1.2;
+      color: var(--muted);
+      background: rgba(255, 255, 255, .06);
+      overflow: hidden;
+    }
+
+    .vcard-members {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 2px;
+    }
+
+    .vmember {
+      position: relative;
+      display: grid;
+      gap: 2px;
+      width: 108px;
+      padding: 4px;
+      border: 1px solid rgba(255, 255, 255, .16);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .05);
+      cursor: grab;
+      text-align: left;
+    }
+
+    .vmember.dragging {
+      opacity: .45;
+    }
+
+    .vmember .mini-thumb {
+      width: 100%;
+      height: 52px;
+      object-fit: cover;
+      border-radius: 4px;
+    }
+
+    .vmember-name {
+      font-size: 10px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .vmember .member-remove {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+    }
+
+    .vmember.drop-before {
+      box-shadow: inset 4px 0 0 #ffb86b;
+    }
+
+    .vmember.drop-after {
+      box-shadow: inset -4px 0 0 #ffb86b;
+    }
+
+    .vmember.drop-before::after,
+    .vmember.drop-after::after {
+      position: absolute;
+      left: 50%;
+      top: 40%;
+      transform: translate(-50%, -50%);
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 2;
+      background: #b26a1e;
+      color: #fff;
+    }
+
+    .vmember.drop-before::after {
+      content: "前へ移動";
+    }
+
+    .vmember.drop-after::after {
+      content: "後ろへ移動";
+    }
+
     .vcard.drop-before::after {
       content: "前へ移動";
       background: #b26a1e;
@@ -1056,7 +1169,6 @@
             <span id="seekTime" class="seek-time">0:00 / 0:00</span>
           </div>
           <div id="overlayCards" class="overlay-cards"></div>
-          <div id="cardMembers" class="card-members" hidden></div>
         </div>
       </div>
     </section>
@@ -1819,6 +1931,7 @@
           }
           persistRotationMap();
           persistCuts();
+          flattenCardMembers();
           for (const key of affected) {
             const item = sourceItems(key)[0];
             const insert = rebuildSourceSegments(key, item.meta?.duration || 0);
@@ -1870,7 +1983,6 @@
         settingsImportButton: document.getElementById("settingsImportButton"),
         settingsImportInput: document.getElementById("settingsImportInput"),
         overlayCards: document.getElementById("overlayCards"),
-        cardMembers: document.getElementById("cardMembers"),
         appendButton: document.getElementById("appendButton"),
         clearFilesButton: document.getElementById("clearFilesButton"),
         resetCardsButton: document.getElementById("resetCardsButton"),
@@ -1924,6 +2036,7 @@
         } catch (error) {
           console.warn("Failed to load settings", error);
         }
+        if (flattenCardMembers()) saveSettings();
       }
 
       function saveSettings() {
@@ -2985,39 +3098,83 @@
         }
       }
 
-      function cardContainsCard(rootKey, targetKey, visited = new Set()) {
-        if (rootKey === targetKey) return true;
-        if (visited.has(rootKey)) return false;
-        visited.add(rootKey);
-        return getCard(rootKey).members.some(m => m.kind === "card" && cardContainsCard(m.card, targetKey, visited));
-      }
-
-      function addCardToCard(srcKey, destKey) {
-        if (srcKey === destKey) {
-          setStatus("同じカードはグループに入れられません。", true);
+      // グループ化＝マージ：src の中身を dest へ移動し、src の枠を詰めて以降を繰り上げる。
+      function mergeCardInto(srcKey, destKey) {
+        if (srcKey === destKey) return;
+        const srcCard = getCard(srcKey);
+        if (!srcCard.members.length) {
+          setStatus(`カード${srcKey}は空なのでグループ化できません。`, true);
           return;
         }
-        if (!getCard(srcKey).members.length) {
-          setStatus(`カード${srcKey}は空なのでグループに入れられません。`, true);
+        const destCard = ensureCard(destKey);
+        if (destCard.members.length + srcCard.members.length > MAX_CARD_MEMBERS) {
+          setStatus(`カード${destKey}は上限（${MAX_CARD_MEMBERS}件）に達するため移動できません。`, true);
           return;
         }
-        if (cardContainsCard(srcKey, destKey)) {
-          setStatus("循環するグループは作れません。", true);
-          return;
+        const movedCount = srcCard.members.length;
+        const destOldCount = destCard.members.length;
+        destCard.members.push(...srcCard.members);
+        srcCard.members = [];
+        // src の枠を詰める（以降の内容が繰り上がる）
+        const order = CARD_KEYS.slice();
+        const snapshot = {};
+        for (const k of order) {
+          const c = state.cards[k];
+          snapshot[k] = c && c.members.length ? { members: c.members, mode: c.mode } : null;
         }
-        const card = ensureCard(destKey);
-        if (card.members.length >= MAX_CARD_MEMBERS) {
-          setStatus(`カード${destKey}は上限（${MAX_CARD_MEMBERS}件）に達しています。`, true);
-          return;
+        const positions = order.slice();
+        positions.splice(order.indexOf(srcKey), 1);
+        positions.push(null);
+        const newKeyOf = {};
+        const nextCards = {};
+        positions.forEach((oldKey, idx) => {
+          if (oldKey == null) return;
+          newKeyOf[oldKey] = order[idx];
+          if (snapshot[oldKey]) nextCards[order[idx]] = snapshot[oldKey];
+        });
+        state.cards = nextCards;
+        const finalDestKey = newKeyOf[destKey] || destKey;
+        // 再生スタック・対象カードの追随
+        for (const frame of state.playStack) {
+          if (frame.card === srcKey) {
+            frame.card = finalDestKey;
+            frame.index += destOldCount;
+          } else if (newKeyOf[frame.card]) {
+            frame.card = newKeyOf[frame.card];
+          }
         }
-        if (card.members.some(m => m.kind === "card" && m.card === srcKey)) {
-          setStatus(`カード${srcKey}は既にカード${destKey}に入っています。`, true);
-          return;
-        }
-        card.members.push({ kind: "card", card: srcKey, name: `カード${srcKey}` });
+        if (state.activeCard === srcKey) state.activeCard = finalDestKey;
+        else if (state.activeCard && newKeyOf[state.activeCard]) state.activeCard = newKeyOf[state.activeCard];
+        if (state.finishedCard === srcKey) state.finishedCard = finalDestKey;
+        else if (state.finishedCard && newKeyOf[state.finishedCard]) state.finishedCard = newKeyOf[state.finishedCard];
+        if (state.expandedCard === srcKey) state.expandedCard = finalDestKey;
+        else if (state.expandedCard && newKeyOf[state.expandedCard]) state.expandedCard = newKeyOf[state.expandedCard];
         saveSettings();
         render();
-        setStatus(`カード${destKey}にカード${srcKey}をグループとして追加しました（${card.members.length}件）。`);
+        setStatus(`カード${srcKey}の${movedCount}件をカード${finalDestKey}へ移動しました（カード${srcKey}は空になり、以降のカードが繰り上がりました）。`);
+      }
+
+      // 旧形式のカード参照メンバーを、実ファイルメンバーへ展開する（グループ＝マージへの移行）
+      function flattenCardMembers() {
+        let changed = false;
+        const expand = (key, visited) => {
+          if (visited.has(key)) return [];
+          visited.add(key);
+          const out = [];
+          for (const m of getCard(key).members) {
+            if (m.kind === "card") out.push(...expand(m.card, visited));
+            else out.push(m);
+          }
+          return out;
+        };
+        for (const key of CARD_KEYS) {
+          const card = state.cards[key];
+          if (card && card.members.some(m => m.kind === "card")) {
+            card.members = expand(key, new Set()).slice(0, MAX_CARD_MEMBERS);
+            changed = true;
+          }
+        }
+        return changed;
       }
 
       function memberResolvable(member, visited = new Set()) {
@@ -3382,8 +3539,11 @@
             parts.push(`${key}:0`);
             continue;
           }
-          const firstItem = resolveMember(card.members[0]);
-          parts.push(`${key}:${card.mode}:${card.members.length}:${firstItem && firstItem.thumb ? 1 : 0}`);
+          const thumbFlags = card.members.slice(0, 4).map(m => {
+            const it = m.kind === "card" ? null : resolveMember(m);
+            return it && it.thumb ? "1" : "0";
+          }).join("");
+          parts.push(`${key}:${card.mode}:${card.members.length}:${thumbFlags}`);
         }
         if (state.expandedCard) {
           const card = getCard(state.expandedCard);
@@ -3403,6 +3563,25 @@
         if (ratio < 0.3) return "before";
         if (ratio > 0.7) return "after";
         return "group";
+      }
+
+      function memberDropZone(event, el) {
+        const rect = el.getBoundingClientRect();
+        if (!rect.width) return "after";
+        return (event.clientX - rect.left) / rect.width < 0.5 ? "before" : "after";
+      }
+
+      function clearMemberDropClasses() {
+        els.overlayCards.querySelectorAll(".vmember").forEach(el => {
+          el.classList.remove("drop-before", "drop-after");
+          delete el.dataset.dropZone;
+        });
+      }
+
+      function moveCardMemberTo(key, from, targetIndex, zone) {
+        const rawDest = zone === "after" ? targetIndex + 1 : targetIndex;
+        const finalTo = rawDest > from ? rawDest - 1 : rawDest;
+        moveCardMember(key, from, finalTo);
       }
 
       function clearCardDropClasses() {
@@ -3434,7 +3613,7 @@
           cardEl.addEventListener("dragstart", event => {
             state.dragCard = key;
             cardEl.classList.add("dragging");
-            setStatus("カードの中央に落とすとグループに入り、左右の端に落とすと並べ替えになります。");
+            setStatus("カードの中央に落とすと中身が移動してグループ化、左右の端に落とすと並べ替えになります。");
             if (event.dataTransfer) {
               event.dataTransfer.effectAllowed = "move";
               try { event.dataTransfer.setData("text/plain", `card:${key}`); } catch (error) { /* noop */ }
@@ -3469,7 +3648,7 @@
             clearCardDropClasses();
             if (state.dragCard && state.dragCard !== key) {
               if (zone === "group") {
-                addCardToCard(state.dragCard, key);
+                mergeCardInto(state.dragCard, key);
               } else {
                 moveCardContentTo(state.dragCard, CARD_KEYS.indexOf(key) + (zone === "after" ? 1 : 0));
               }
@@ -3480,7 +3659,59 @@
             }
           });
         });
-        renderCardMembers();
+        wireCardMembers();
+      }
+
+      // 展開中のカード内メンバー（サムネイル）のドラッグ並べ替え・削除
+      function wireCardMembers() {
+        const key = state.expandedCard;
+        if (!key) return;
+        els.overlayCards.querySelectorAll(".vmember").forEach(chip => {
+          chip.addEventListener("click", event => event.stopPropagation());
+          chip.addEventListener("dragstart", event => {
+            event.stopPropagation();
+            state.dragMember = { card: key, index: Number(chip.dataset.mi) };
+            chip.classList.add("dragging");
+            if (event.dataTransfer) {
+              event.dataTransfer.effectAllowed = "move";
+              try { event.dataTransfer.setData("text/plain", "member"); } catch (error) { /* noop */ }
+            }
+          });
+          chip.addEventListener("dragend", () => {
+            chip.classList.remove("dragging");
+            clearMemberDropClasses();
+            state.dragMember = null;
+          });
+          chip.addEventListener("dragover", event => {
+            if (!state.dragMember || state.dragMember.card !== key || state.dragMember.index === Number(chip.dataset.mi)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const zone = memberDropZone(event, chip);
+            chip.dataset.dropZone = zone;
+            chip.classList.toggle("drop-before", zone === "before");
+            chip.classList.toggle("drop-after", zone === "after");
+          });
+          chip.addEventListener("dragleave", () => {
+            chip.classList.remove("drop-before", "drop-after");
+            delete chip.dataset.dropZone;
+          });
+          chip.addEventListener("drop", event => {
+            event.preventDefault();
+            event.stopPropagation();
+            const zone = chip.dataset.dropZone || "after";
+            clearMemberDropClasses();
+            if (state.dragMember && state.dragMember.card === key) {
+              moveCardMemberTo(key, state.dragMember.index, Number(chip.dataset.mi), zone);
+            }
+            state.dragMember = null;
+          });
+        });
+        els.overlayCards.querySelectorAll(".vmember .member-remove").forEach(button => {
+          button.addEventListener("click", event => {
+            event.stopPropagation();
+            removeCardMember(key, Number(button.dataset.mr));
+          });
+        });
       }
 
       function renderVCard(key) {
@@ -3489,19 +3720,35 @@
         const firstItem = first ? resolveMember(first) : null;
         const active = state.activeCard === key;
         const expanded = state.expandedCard === key;
-        const thumbHtml = first
-          ? (first.kind === "card"
-              ? `<span class="thumb-fallback">カード<br>${first.card}</span>`
-              : renderThumb(firstItem || { index: "", name: first.name, thumb: "" }, "thumb"))
-          : '<span class="thumb-fallback">no<br>card</span>';
+        let thumbClass = "vcard-thumb";
+        let thumbHtml;
+        if (!first) {
+          thumbHtml = '<span class="thumb-fallback">no<br>card</span>';
+        } else if (card.members.length >= 2) {
+          thumbClass = "vcard-thumb tile";
+          thumbHtml = card.members.slice(0, 4).map(m => {
+            const it = m.kind === "card" ? null : resolveMember(m);
+            return `<span class="tile-cell">${it && it.thumb ? `<img src="${it.thumb}" alt="">` : `<span class="tile-fallback">${escapeHtml(shortName(m.name))}</span>`}</span>`;
+          }).join("");
+        } else if (first.kind === "card") {
+          thumbHtml = `<span class="thumb-fallback">カード<br>${first.card}</span>`;
+        } else {
+          thumbHtml = renderThumb(firstItem || { index: "", name: first.name, thumb: "" }, "thumb");
+        }
+        const membersHtml = expanded ? `
+            <div class="vcard-members">${card.members.map((member, i) => {
+              const item = member.kind === "card" ? null : resolveMember(member);
+              const ok = memberResolvable(member);
+              return `<span class="vmember" draggable="true" data-mi="${i}" title="${escapeHtml(memberLabel(member))}（ドラッグで並べ替え）">${item && item.thumb ? `<img class="mini-thumb" src="${item.thumb}" alt="">` : `<span class="mini-thumb mini-fallback">${member.kind === "card" ? member.card : i + 1}</span>`}<span class="vmember-name">${escapeHtml(memberLabel(member))}${ok ? "" : "（未読込）"}</span><button type="button" class="member-remove" data-mr="${i}" title="カードから外す">×</button></span>`;
+            }).join("")}</div>` : "";
         return `
           <div class="vcard ${active ? "active" : ""} ${card.members.length ? "" : "empty"} ${expanded ? "expanded" : ""}" data-card="${key}" draggable="true" title="カード${key}（クリックで再生、サムネイルクリックで中身を展開、ドラッグで移動：中央へ落とすとグループ化、端へ落とすと並べ替え）">
             <div class="vcard-head">
               <span class="vcard-key">${key}</span>
               <button type="button" class="mini-btn ${card.mode === "once" ? "mode-once" : "mode-loop"}" data-mode="${key}" title="このカードの再生モード（ループ／一回だけ）">${card.mode === "once" ? "一回" : "ループ"}</button>
             </div>
-            <span class="vcard-thumb" data-expand="${key}">${thumbHtml}</span>
-            <span class="vcard-meta">${card.members.length ? `${card.members.length}件` : "未指定"}</span>
+            <span class="${thumbClass}" data-expand="${key}">${thumbHtml}</span>
+            <span class="vcard-meta">${card.members.length ? `${card.members.length}件` : "未指定"}</span>${membersHtml}
           </div>
         `;
       }
@@ -3630,51 +3877,6 @@
         card.members.splice(to, 0, member);
         saveSettings();
         renderCards();
-      }
-
-      function renderCardMembers() {
-        const root = els.cardMembers;
-        const key = state.expandedCard;
-        const card = key ? getCard(key) : null;
-        if (!key || !card || !card.members.length) {
-          root.hidden = true;
-          root.innerHTML = "";
-          return;
-        }
-        root.hidden = false;
-        root.innerHTML = `
-          <span class="card-members-title">カード${key}（ドラッグで再生順を変更）</span>
-          ${card.members.map((member, i) => {
-            const item = member.kind === "card" ? null : resolveMember(member);
-            const ok = memberResolvable(member);
-            return `
-            <span class="member-chip" draggable="true" data-mi="${i}" title="${escapeHtml(memberLabel(member))}">
-              ${item && item.thumb ? `<img class="mini-thumb" src="${item.thumb}" alt="">` : `<span class="mini-thumb mini-fallback">${member.kind === "card" ? member.card : i + 1}</span>`}
-              <span class="member-name">${escapeHtml(memberLabel(member))}${ok ? "" : "（未読込）"}</span>
-              <button type="button" class="member-remove" data-mr="${i}" title="カードから外す">×</button>
-            </span>`;
-          }).join("")}
-        `;
-        root.querySelectorAll(".member-chip").forEach(chip => {
-          chip.addEventListener("dragstart", event => {
-            state.dragMember = { card: key, index: Number(chip.dataset.mi) };
-            if (event.dataTransfer) {
-              event.dataTransfer.effectAllowed = "move";
-              event.dataTransfer.setData("text/plain", "member");
-            }
-          });
-          chip.addEventListener("dragover", event => event.preventDefault());
-          chip.addEventListener("drop", event => {
-            event.preventDefault();
-            if (state.dragMember && state.dragMember.card === key) {
-              moveCardMember(key, state.dragMember.index, Number(chip.dataset.mi));
-            }
-            state.dragMember = null;
-          });
-        });
-        root.querySelectorAll(".member-remove").forEach(button => {
-          button.addEventListener("click", () => removeCardMember(key, Number(button.dataset.mr)));
-        });
       }
 
       function renderThumb(item, className) {
