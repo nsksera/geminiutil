@@ -410,6 +410,11 @@
       content: "前へ移動";
     }
 
+    .member-leave-target {
+      outline: 2px dashed #ffb86b !important;
+      outline-offset: -2px;
+    }
+
     .vmember.drop-after::after {
       content: "後ろへ移動";
     }
@@ -3682,6 +3687,7 @@
             event.stopPropagation();
             state.dragMember = { card: key, index: Number(chip.dataset.mi) };
             chip.classList.add("dragging");
+            setStatus("メンバーを左のファイル一覧か映像エリアへ落とすと、グループから外せます。");
             if (event.dataTransfer) {
               event.dataTransfer.effectAllowed = "move";
               try { event.dataTransfer.setData("text/plain", "member"); } catch (error) { /* noop */ }
@@ -4217,6 +4223,31 @@
           persistRotation();
           setStatus(`回転 ${(state.rotation || 0).toFixed(1)}° / ズーム ${Math.round(state.zoom * 100)}%（100%＝自動拡大、最小で四隅まで表示）`);
         }, { passive: false });
+
+        // グループからの離脱：メンバーをカードの外（ファイル一覧／映像エリア）へ落とすと外れる
+        const memberLeaveTargets = [els.fileList, els.videoWrap];
+        for (const target of memberLeaveTargets) {
+          target.addEventListener("dragover", event => {
+            if (!state.dragMember) return;
+            if (target === els.videoWrap && event.target.closest && event.target.closest("#overlay")) return;
+            event.preventDefault();
+            target.classList.add("member-leave-target");
+          });
+          target.addEventListener("dragleave", () => target.classList.remove("member-leave-target"));
+          target.addEventListener("drop", event => {
+            if (!state.dragMember) return;
+            if (target === els.videoWrap && event.target.closest && event.target.closest("#overlay")) return;
+            event.preventDefault();
+            target.classList.remove("member-leave-target");
+            const { card, index } = state.dragMember;
+            const member = getCard(card).members[index];
+            state.dragMember = null;
+            if (member) {
+              removeCardMember(card, index);
+              setStatus(`カード${card}から「${memberLabel(member)}」を外しました。`);
+            }
+          });
+        }
 
         els.videoWrap.addEventListener("dblclick", event => {
           if (!getCurrentFile()) return;
