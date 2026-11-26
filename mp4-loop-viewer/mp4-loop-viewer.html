@@ -1042,6 +1042,7 @@
         cardIndex: 0,
         finishedCard: null,
         expandedCard: null,
+        pendingImport: null,
         dragItem: null,
         dragMember: null,
         rotClipboard: null,
@@ -1143,6 +1144,14 @@
           localStorage.setItem(ROTATION_STORAGE_KEY, JSON.stringify(savedRotations));
         } catch (error) {
           console.warn("Could not save rotation", error);
+        }
+      }
+
+      function persistRotationMap() {
+        try {
+          localStorage.setItem(ROTATION_STORAGE_KEY, JSON.stringify(savedRotations));
+        } catch (error) {
+          console.warn("Could not save rotations", error);
         }
       }
 
@@ -1704,6 +1713,18 @@
           if (!data || data.app !== "mp4-loop-viewer" || data.kind !== "settings" || !Array.isArray(data.files)) {
             throw new Error("unexpected format");
           }
+          // インポートはスナップショットの復元として扱い、現在のカード・登録・
+          // ファイル設定を先に初期化してから、JSONの内容だけを適用する。
+          if (Array.isArray(data.cards)) state.cards = {};
+          for (const key of Object.keys(savedRotations)) delete savedRotations[key];
+          for (const key of Object.keys(savedCuts)) delete savedCuts[key];
+          revokeFiles();
+          state.files = [];
+          state.activeCard = null;
+          state.finishedCard = null;
+          state.expandedCard = null;
+          state.cardIndex = 0;
+          resetPlayback();
           if (Array.isArray(data.cards)) {
             for (const entry of data.cards) {
               const key = entry && entry.card;
@@ -1729,15 +1750,31 @@
               if (changed && sourceItems(entry.key).length) affected.add(entry.key);
             }
           }
-          persistRotations();
+          persistRotationMap();
           persistCuts();
           for (const key of affected) {
             const item = sourceItems(key)[0];
             const insert = rebuildSourceSegments(key, item.meta?.duration || 0);
             if (insert.length) generateThumbnails(insert);
           }
+          // 次にフォルダ選択（ピッカー）を開いた時、インポートしたカードに
+          // 必要な動画だけを自動で選択するための控え。
+          const wanted = [];
+          const seen = new Set();
+          if (Array.isArray(data.cards)) {
+            for (const key of CARD_KEYS) {
+              const card = state.cards[key];
+              if (!card) continue;
+              for (const member of card.members) {
+                if (seen.has(member.key)) continue;
+                seen.add(member.key);
+                wanted.push(member);
+              }
+            }
+          }
+          state.pendingImport = wanted.length ? wanted : null;
           render();
-          setStatus(`設定をインポートしました（カード${data.cards.length}件・ファイル設定${data.files.length}件）。`);
+          setStatus(`設定をインポートしました（カード${(data.cards || []).length}件・ファイル設定${data.files.length}件）。「フォルダから選ぶ」で対象フォルダを選ぶと、必要な動画が自動で選択されます。`);
         } catch (error) {
           console.warn("Settings import failed", error);
           setStatus("設定JSONを読み込めませんでした。", true);
@@ -2508,6 +2545,15 @@
           loadError: ""
         }));
         picker.selected = [];
+        if (state.pendingImport) {
+          const wanted = state.pendingImport;
+          state.pendingImport = null;
+          for (const member of wanted) {
+            const cand = picker.candidates.find(c => fileCacheKey(c.file) === member.key)
+              || picker.candidates.find(c => c.file.name === member.name && c.file.size === member.size);
+            if (cand && !picker.selected.includes(cand)) picker.selected.push(cand);
+          }
+        }
         els.picker.hidden = false;
         renderPicker();
         setupPickerObserver();
@@ -2961,7 +3007,7 @@
         }
         const { r, z } = state.rotClipboard;
         savedRotations[fileCacheKey(item.file)] = { r, z };
-        persistRotations();
+        persistRotationMap();
         if (item === getCurrentFile()) {
           state.rotation = r;
           state.zoom = z;
