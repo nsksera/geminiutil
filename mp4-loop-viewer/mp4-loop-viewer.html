@@ -949,6 +949,7 @@
           <button id="fullscreenButton" type="button">フルスクリーン</button>
           <button id="restartButton" type="button">先頭から再生</button>
           <button id="toggleUiButton" type="button">UI表示切替</button>
+          <button id="resetCardsButton" type="button">カード初期化</button>
         </div>
         <div id="status" class="status">MP4ファイルを選択してください。ドラッグ&ドロップでも追加できます。</div>
       </section>
@@ -1761,6 +1762,7 @@
         cardMembers: document.getElementById("cardMembers"),
         appendButton: document.getElementById("appendButton"),
         clearFilesButton: document.getElementById("clearFilesButton"),
+        resetCardsButton: document.getElementById("resetCardsButton"),
         fullscreenButton: document.getElementById("fullscreenButton"),
         restartButton: document.getElementById("restartButton"),
         toggleUiButton: document.getElementById("toggleUiButton"),
@@ -3261,6 +3263,25 @@
         renderNow();
       }
 
+      // 全カードのファイル指定とモードを一括で消す（フォルダを切り替えた時用）。
+      function resetAllCards() {
+        const total = CARD_KEYS.reduce((sum, key) => sum + getCard(key).members.length, 0);
+        if (!total && !state.activeCard) {
+          setStatus("カードは既に空です。");
+          return;
+        }
+        if (!window.confirm(`全てのカードのファイル指定（${total}件）とモードを消して初期化します。よろしいですか？`)) return;
+        state.cards = {};
+        state.activeCard = null;
+        state.finishedCard = null;
+        state.expandedCard = null;
+        state.cardIndex = 0;
+        resetPlayback();
+        saveSettings();
+        render();
+        setStatus("カードを初期化しました。");
+      }
+
       function addCardMember(key, item) {
         const card = ensureCard(key);
         if (card.members.length >= MAX_CARD_MEMBERS) {
@@ -3527,6 +3548,7 @@
         els.pickerCancel.addEventListener("click", () => closePicker());
         els.sheetModal.addEventListener("click", closeSheetModal);
         els.clearFilesButton.addEventListener("click", clearFiles);
+        els.resetCardsButton.addEventListener("click", resetAllCards);
         els.folderPlayButton.addEventListener("click", startFolderPlay);
         els.settingsExportButton.addEventListener("click", exportSettings);
         els.settingsImportButton.addEventListener("click", () => els.settingsImportInput.click());
