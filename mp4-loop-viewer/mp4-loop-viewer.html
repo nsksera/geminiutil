@@ -1089,11 +1089,21 @@
       }
 
       function resolveMember(member) {
-        return state.files.find(it => {
-          if (!it.file || fileCacheKey(it.file) !== member.key) return false;
-          if (member.segStart == null) return it.segCount === 1;
-          return it.segStart === member.segStart && it.segEnd === member.segEnd;
-        }) || null;
+        const segmentMatches = it => member.segStart == null
+          ? it.segCount === 1
+          : it.segStart === member.segStart && it.segEnd === member.segEnd;
+        let item = state.files.find(it => it.file && fileCacheKey(it.file) === member.key && segmentMatches(it));
+        if (item) return item;
+        // 緩い照合：更新日時だけが違う同一ファイル（再保存・別経路の読み込み等）を
+        // 名前とサイズで拾い、キーを現在のファイルに合わせて自己修復する。
+        item = state.files.find(it => it.file && it.name === member.name && it.file.size === member.size && segmentMatches(it));
+        if (item) {
+          member.key = fileCacheKey(item.file);
+          member.lastModified = item.file.lastModified;
+          saveSettings();
+          return item;
+        }
+        return null;
       }
 
       function getCard(key) {
