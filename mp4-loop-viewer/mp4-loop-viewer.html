@@ -950,6 +950,7 @@
           <button id="restartButton" type="button">先頭から再生</button>
           <button id="toggleUiButton" type="button">UI表示切替</button>
           <button id="resetCardsButton" type="button">カード初期化</button>
+          <button id="bulkAssignButton" type="button">カードへ一括登録</button>
         </div>
         <div id="status" class="status">MP4ファイルを選択してください。ドラッグ&ドロップでも追加できます。</div>
       </section>
@@ -1044,6 +1045,7 @@
         expandedCard: null,
         pendingImport: null,
         dragItem: null,
+        dragCard: null,
         dragMember: null,
         rotClipboard: null,
         expandedSheets: new Set(),
@@ -1800,6 +1802,7 @@
         appendButton: document.getElementById("appendButton"),
         clearFilesButton: document.getElementById("clearFilesButton"),
         resetCardsButton: document.getElementById("resetCardsButton"),
+        bulkAssignButton: document.getElementById("bulkAssignButton"),
         fullscreenButton: document.getElementById("fullscreenButton"),
         restartButton: document.getElementById("restartButton"),
         toggleUiButton: document.getElementById("toggleUiButton"),
@@ -3262,8 +3265,17 @@
             state.expandedCard = state.expandedCard === key ? null : key;
             renderCards();
           });
+          cardEl.addEventListener("dragstart", event => {
+            state.dragCard = key;
+            if (event.dataTransfer) {
+              event.dataTransfer.effectAllowed = "move";
+              try { event.dataTransfer.setData("text/plain", `card:${key}`); } catch (error) { /* noop */ }
+            }
+          });
+          cardEl.addEventListener("dragend", () => { state.dragCard = null; });
           cardEl.addEventListener("dragover", event => {
-            if (!state.dragItem) return;
+            if (!state.dragItem && !state.dragCard) return;
+            if (state.dragCard === key) return;
             event.preventDefault();
             cardEl.classList.add("drop-target");
           });
@@ -3271,7 +3283,10 @@
           cardEl.addEventListener("drop", event => {
             event.preventDefault();
             cardEl.classList.remove("drop-target");
-            if (state.dragItem) {
+            if (state.dragCard && state.dragCard !== key) {
+              moveCardContent(state.dragCard, key);
+              state.dragCard = null;
+            } else if (state.dragItem) {
               addCardMember(key, state.dragItem);
               state.dragItem = null;
             }
@@ -3290,7 +3305,7 @@
           ? renderThumb(firstItem || { index: "", name: first.name, thumb: "" }, "thumb")
           : '<span class="thumb-fallback">no<br>card</span>';
         return `
-          <div class="vcard ${active ? "active" : ""} ${card.members.length ? "" : "empty"} ${expanded ? "expanded" : ""}" data-card="${key}" title="カード${key}（クリックで再生、サムネイルクリックで中身を展開）">
+          <div class="vcard ${active ? "active" : ""} ${card.members.length ? "" : "empty"} ${expanded ? "expanded" : ""}" data-card="${key}" draggable="true" title="カード${key}（クリックで再生、サムネイルクリックで中身を展開、ドラッグで並べ替え）">
             <div class="vcard-head">
               <span class="vcard-key">${key}</span>
               <button type="button" class="mini-btn ${card.mode === "once" ? "mode-once" : "mode-loop"}" data-mode="${key}" title="このカードの再生モード（ループ／一回だけ）">${card.mode === "once" ? "一回" : "ループ"}</button>
@@ -3326,6 +3341,76 @@
         saveSettings();
         render();
         setStatus("カードを初期化しました。");
+      }
+
+      // カードの並べ替え：キーの位置は固定で、中身（メンバー＋モード）を
+      // ドラッグ先の位置へ差し込み、間をずらす。再生中などの対象も中身に追随する。
+      function moveCardContent(fromKey, toKey) {
+        if (fromKey === toKey) return;
+        const order = CARD_KEYS.slice();
+        const from = order.indexOf(fromKey);
+        const to = order.indexOf(toKey);
+        if (from < 0 || to < 0) return;
+        const snapshot = {};
+        for (const key of order) {
+          const card = state.cards[key];
+          snapshot[key] = card ? { members: card.members.slice(), mode: card.mode } : { members: [], mode: "loop" };
+        }
+        const positions = order.slice();
+        const [movedKey] = positions.splice(from, 1);
+        positions.splice(to, 0, movedKey);
+        const newKeyOf = {};
+        const nextCards = {};
+        positions.forEach((oldKey, i) => {
+          newKeyOf[oldKey] = order[i];
+          if (snapshot[oldKey].members.length) nextCards[order[i]] = snapshot[oldKey];
+        });
+        state.cards = nextCards;
+        if (state.activeCard && newKeyOf[state.activeCard]) state.activeCard = newKeyOf[state.activeCard];
+        if (state.finishedCard && newKeyOf[state.finishedCard]) state.finishedCard = newKeyOf[state.finishedCard];
+        if (state.expandedCard && newKeyOf[state.expandedCard]) state.expandedCard = newKeyOf[state.expandedCard];
+        saveSettings();
+        render();
+        setStatus(`カード${fromKey}の中身を${toKey}の位置へ移動しました。`);
+      }
+
+      // 読み込んだファイルを、空きカードへ1ファイル（区間はまとめて）ずつ一括登録する。
+      function bulkAssignCards() {
+        const sources = [];
+        const seen = new Set();
+        for (const item of state.files) {
+          if (!item.file) continue;
+          const key = fileCacheKey(item.file);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          sources.push(sourceItems(key));
+        }
+        if (!sources.length) {
+          setStatus("登録できる動画がありません。先に動画を読み込んでください。", true);
+          return;
+        }
+        const emptyKeys = CARD_KEYS.filter(key => !getCard(key).members.length);
+        if (!emptyKeys.length) {
+          setStatus("空きカードがありません。先にカード初期化をしてください。", true);
+          return;
+        }
+        let assigned = 0;
+        for (const items of sources) {
+          if (assigned >= emptyKeys.length) break;
+          const card = ensureCard(emptyKeys[assigned]);
+          for (const item of items) {
+            const member = memberFromItem(item);
+            if (member) card.members.push(member);
+          }
+          if (card.members.length) assigned++;
+        }
+        saveSettings();
+        render();
+        if (assigned < sources.length) {
+          setStatus(`カードへ一括登録しました：${sources.length}ファイル中${assigned}件を割り当てました（空きカード不足で${sources.length - assigned}件は未登録）。`, true);
+        } else {
+          setStatus(`カードへ一括登録しました：${assigned}件のカードに割り当てました。`);
+        }
       }
 
       function addCardMember(key, item) {
@@ -3595,6 +3680,7 @@
         els.sheetModal.addEventListener("click", closeSheetModal);
         els.clearFilesButton.addEventListener("click", clearFiles);
         els.resetCardsButton.addEventListener("click", resetAllCards);
+        els.bulkAssignButton.addEventListener("click", bulkAssignCards);
         els.folderPlayButton.addEventListener("click", startFolderPlay);
         els.settingsExportButton.addEventListener("click", exportSettings);
         els.settingsImportButton.addEventListener("click", () => els.settingsImportInput.click());
