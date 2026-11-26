@@ -939,9 +939,9 @@
 
       <section class="section">
         <div class="section-title">Files</div>
-        <input id="appendInput" class="hidden-input" type="file" multiple accept="video/mp4,video/*" aria-hidden="true" tabindex="-1">
+        <input id="appendInput" class="hidden-input" type="file" multiple accept="video/*,.mp4,.m4v,.mov,.webm,.mkv" aria-hidden="true" tabindex="-1">
         <input id="folderInput" class="hidden-input" type="file" webkitdirectory aria-hidden="true" tabindex="-1">
-        <input id="fileInput" class="file-input" type="file" multiple accept="video/mp4,video/*">
+        <input id="fileInput" class="file-input" type="file" multiple accept="video/*,.mp4,.m4v,.mov,.webm,.mkv">
         <div class="actions">
           <button id="folderButton" type="button">フォルダから選ぶ</button>
           <button id="appendButton" type="button">追加読込</button>
@@ -1829,7 +1829,7 @@
 
       function createFileItems(fileList, startIndex) {
         return Array.from(fileList)
-          .filter(file => file.type.startsWith("video/") || /\.mp4$/i.test(file.name))
+          .filter(file => file.type.startsWith("video/") || /\.(mp4|m4v|mov|webm|mkv)$/i.test(file.name))
           .map((file, index) => ({
           file,
           index: startIndex + index,
