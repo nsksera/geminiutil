@@ -434,6 +434,26 @@
       text-align: right;
     }
 
+    .file-cards {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin-top: 2px;
+    }
+
+    .card-badge {
+      min-width: 18px;
+      padding: 0 5px;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 16px;
+      color: #ffd9a0;
+      background: rgba(255, 184, 107, .14);
+      border: 1px solid rgba(255, 184, 107, .45);
+      border-radius: 999px;
+    }
+
     .member-leave-target {
       outline: 2px dashed #ffb86b !important;
       outline-offset: -2px;
@@ -1166,7 +1186,7 @@
       <section class="section">
         <div class="section-title">Selected Videos</div>
         <ul id="fileList" class="file-list"></ul>
-        <p class="app-version">ver 2026.11.27-3</p>
+        <p class="app-version">ver 2026.11.27-4</p>
       </section>
 
       <section class="section">
@@ -3375,6 +3395,14 @@
         renderFiles();
       }
 
+      function cardKeysForItem(item) {
+        const keys = [];
+        for (const key of CARD_KEYS) {
+          if (getCard(key).members.some(member => resolveMember(member) === item)) keys.push(key);
+        }
+        return keys;
+      }
+
       function renderFiles() {
         if (!state.files.length) {
           els.fileList.innerHTML = '<li class="status">未選択</li>';
@@ -3387,6 +3415,7 @@
             <div class="file-meta">
               <div class="file-name" title="${escapeHtml(item.name)}">${escapeHtml(displayName(item))}</div>
               <div class="file-note">${escapeHtml(fileNote(item))}</div>
+              ${cardKeysForItem(item).length ? `<div class="file-cards">${cardKeysForItem(item).map(key => `<span class="card-badge" title="カード${key}に登録済み">${key}</span>`).join("")}</div>` : ""}
             </div>
             <button type="button" class="mini-btn" data-move="-1" data-pos="${item.index - 1}" title="上へ移動">↑</button>
             <button type="button" class="mini-btn" data-move="1" data-pos="${item.index - 1}" title="下へ移動">↓</button>
@@ -3570,6 +3599,11 @@
       // サムネイル生成などのたびに作り直すと、クリック途中でボタンが消えて
       // モード切替ボタンが効かなくなるため。
       let lastCardsSignature = "";
+      let lastMemberMapSignature = "";
+
+      function memberMapSignature() {
+        return CARD_KEYS.map(key => key + "=" + getCard(key).members.map(m => `${m.key}|${m.segStart ?? ""}-${m.segEnd ?? ""}`).join(",")).join(";");
+      }
 
       function cardsSignature() {
         const parts = [state.activeCard || "", state.expandedCard || ""];
@@ -3700,6 +3734,11 @@
           });
         });
         wireCardMembers();
+        const mapSig = memberMapSignature();
+        if (mapSig !== lastMemberMapSignature) {
+          lastMemberMapSignature = mapSig;
+          renderFiles();
+        }
       }
 
       // 展開中のカード内メンバー（サムネイル）のドラッグ並べ替え・削除
