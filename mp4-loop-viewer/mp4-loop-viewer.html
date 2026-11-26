@@ -3103,7 +3103,36 @@
         return !els.sheetModal.hidden;
       }
 
+      // カード描画は、内容に変化があった時だけDOMを作り直す。
+      // サムネイル生成などのたびに作り直すと、クリック途中でボタンが消えて
+      // モード切替ボタンが効かなくなるため。
+      let lastCardsSignature = "";
+
+      function cardsSignature() {
+        const parts = [state.activeCard || "", state.expandedCard || ""];
+        for (const key of CARD_KEYS) {
+          const card = state.cards[key];
+          if (!card || !card.members.length) {
+            parts.push(`${key}:0`);
+            continue;
+          }
+          const firstItem = resolveMember(card.members[0]);
+          parts.push(`${key}:${card.mode}:${card.members.length}:${firstItem && firstItem.thumb ? 1 : 0}`);
+        }
+        if (state.expandedCard) {
+          const card = getCard(state.expandedCard);
+          parts.push("members:" + card.members.map(member => {
+            const item = resolveMember(member);
+            return `${item && item.thumb ? 1 : 0}:${member.name}:${member.segStart}`;
+          }).join(","));
+        }
+        return parts.join("|");
+      }
+
       function renderCards() {
+        const signature = cardsSignature();
+        if (signature === lastCardsSignature) return;
+        lastCardsSignature = signature;
         els.overlayCards.innerHTML = CARD_KEYS.map(key => renderVCard(key)).join("");
         els.overlayCards.querySelectorAll(".vcard").forEach(cardEl => {
           const key = cardEl.dataset.card;
