@@ -295,6 +295,12 @@
       grid-column: 1 / -1;
     }
 
+    /* 拡大時もサムネイルは通常カードと同じ幅に留める（横に伸ばさない） */
+    .vcard.expanded .vcard-thumb {
+      width: 208px;
+      justify-self: start;
+    }
+
     .vcard-thumb.tile {
       display: grid;
       grid-template-columns: 1fr 1fr;
