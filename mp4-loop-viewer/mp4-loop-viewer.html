@@ -115,6 +115,18 @@
       display: none;
     }
 
+    .folder-progress {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      z-index: 30;
+      font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+      font-size: 13px;
+      letter-spacing: .08em;
+      color: rgba(150, 150, 150, .55);
+      pointer-events: none;
+    }
+
     .folder-filter {
       display: flex;
       gap: 6px;
@@ -1253,7 +1265,7 @@
       <section class="section">
         <div class="section-title">Selected Videos</div>
         <ul id="fileList" class="file-list"></ul>
-        <p class="app-version">ver 2026.11.27-7</p>
+        <p class="app-version">ver 2026.11.27-8</p>
       </section>
 
       <section class="section">
@@ -1295,6 +1307,7 @@
             <span>ファイルを選択して、ループカードまたは数字キーで開始します。</span>
           </div>
         </div>
+        <div id="folderProgress" class="folder-progress" hidden>0000/0000</div>
         <div id="overlay" class="overlay">
           <div class="nowbar">
             <div class="main" id="nowPlaying">現在再生中: なし</div>
@@ -1868,6 +1881,7 @@
       function stopFolderPlay() {
         const fp = state.folderPlay;
         fp.active = false;
+        els.folderProgress.hidden = true;
         if (fp.item && state.directItem === fp.item) state.directItem = null;
         fp.item = null;
       }
@@ -1907,6 +1921,8 @@
         };
         fp.item = item;
         state.directItem = item;
+        els.folderProgress.textContent = `${String(index + 1).padStart(4, "0")}/${String(fp.files.length).padStart(4, "0")}`;
+        els.folderProgress.hidden = false;
         await playCurrent(true);
         setStatus(`フォルダ連続再生（${index + 1}/${fp.files.length}）：${entry.rel}`);
         render();
@@ -2136,6 +2152,7 @@
         app: document.getElementById("app"),
         folderFilterText: document.getElementById("folderFilterText"),
         folderFilterMode: document.getElementById("folderFilterMode"),
+        folderProgress: document.getElementById("folderProgress"),
         folderPlayButton: document.getElementById("folderPlayButton"),
         folderPlayStopButton: document.getElementById("folderPlayStopButton"),
         folderPlayInput: document.getElementById("folderPlayInput"),
