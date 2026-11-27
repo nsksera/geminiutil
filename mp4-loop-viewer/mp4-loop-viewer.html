@@ -77,6 +77,58 @@
       padding: 18px;
     }
 
+    .app.sidebar-collapsed {
+      grid-template-columns: 0 minmax(0, 1fr);
+    }
+
+    .app.sidebar-collapsed .sidebar {
+      display: none;
+    }
+
+    .sidebar-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .sidebar-show {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 40;
+      min-height: 30px;
+      padding: 0 10px;
+      font-size: 12px;
+      background: rgba(16, 20, 26, .82);
+    }
+
+    .folder-filter {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .folder-filter input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      padding: 6px 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #202832;
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .folder-filter select {
+      padding: 6px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #202832;
+      color: var(--text);
+      font-size: 12px;
+    }
+
     .stage {
       position: relative;
       min-width: 0;
@@ -1162,7 +1214,10 @@
 <body>
   <main class="app" id="app">
     <aside class="sidebar">
-      <h1>MP4 Loop Viewer</h1>
+      <div class="sidebar-head">
+        <h1>MP4 Loop Viewer</h1>
+        <button id="sidebarHideButton" class="mini-btn" type="button" title="左メニューをたたむ">◀ たたむ</button>
+      </div>
       <p class="lead">MP4を選び、ファイルをオーバーレイのカードに割り当てて再生します。カードはキーボードの 1〜0 / Q〜P / A〜; に対応しています。</p>
 
       <section class="section">
@@ -1186,7 +1241,7 @@
       <section class="section">
         <div class="section-title">Selected Videos</div>
         <ul id="fileList" class="file-list"></ul>
-        <p class="app-version">ver 2026.11.27-4</p>
+        <p class="app-version">ver 2026.11.27-5</p>
       </section>
 
       <section class="section">
@@ -1195,6 +1250,14 @@
         <div class="actions">
           <button id="folderPlayButton" type="button">フォルダを指定して連続再生</button>
           <button id="folderPlayStopButton" type="button">停止</button>
+        </div>
+        <div class="folder-filter">
+          <input id="folderFilterText" type="text" placeholder="ファイル名に含む文字列">
+          <select id="folderFilterMode" title="フォルダ連続再生のフィルター">
+            <option value="off">フィルターなし</option>
+            <option value="include">含むものだけ再生</option>
+            <option value="exclude">含むものを再生しない</option>
+          </select>
         </div>
         <p class="lead">指定したフォルダ以下の動画を、サブフォルダも含めて名前順に一回ずつ再生します（登録・サムネイル生成はしません）。</p>
       </section>
@@ -1211,6 +1274,7 @@
     </aside>
 
     <section class="stage" id="stage">
+      <button id="sidebarShowButton" class="sidebar-show" type="button" title="左メニューを開く" hidden>▶ メニュー</button>
       <div class="video-wrap">
         <video id="player" playsinline preload="metadata"></video>
         <div id="emptyState" class="empty-state">
@@ -1286,7 +1350,9 @@
         zoom: 1,
         directItem: null,
         seekScrubbing: false,
-        folderPlay: { active: false, files: [], index: 0, name: "", item: null, currentUrl: "" }
+        folderPlay: { active: false, files: [], index: 0, name: "", item: null, currentUrl: "" },
+        sidebarCollapsed: false,
+        folderFilter: { text: "", mode: "off" }
       };
 
       function sanitizeMember(raw) {
@@ -1838,10 +1904,27 @@
         playFolderAt(state.folderPlay.index + 1);
       }
 
-      function beginFolderPlay(files, name) {
+      function applyFolderFilter(entries) {
+        const text = state.folderFilter.text.trim().toLowerCase();
+        if (!text || state.folderFilter.mode === "off") return { files: entries, filteredOut: 0 };
+        const kept = entries.filter(entry => {
+          const hit = entry.file.name.toLowerCase().includes(text);
+          return state.folderFilter.mode === "include" ? hit : !hit;
+        });
+        return { files: kept, filteredOut: entries.length - kept.length };
+      }
+
+      function beginFolderPlay(entries, name) {
+        const { files, filteredOut } = applyFolderFilter(entries);
+        if (!files.length) {
+          setStatus("フィルター条件に合う動画がありませんでした。", true);
+          return;
+        }
         state.folderPlay.files = files;
         state.folderPlay.name = name;
-        setStatus(`フォルダ「${name}」の動画${files.length}件を連続再生します。`);
+        setStatus(filteredOut
+          ? `フォルダ「${name}」の動画${files.length}件を連続再生します（フィルターで${filteredOut}件を除外）。`
+          : `フォルダ「${name}」の動画${files.length}件を連続再生します。`);
         playFolderAt(0);
       }
 
@@ -2036,6 +2119,11 @@
         fileInput: document.getElementById("fileInput"),
         appendInput: document.getElementById("appendInput"),
         fileList: document.getElementById("fileList"),
+        sidebarHideButton: document.getElementById("sidebarHideButton"),
+        sidebarShowButton: document.getElementById("sidebarShowButton"),
+        app: document.getElementById("app"),
+        folderFilterText: document.getElementById("folderFilterText"),
+        folderFilterMode: document.getElementById("folderFilterMode"),
         folderPlayButton: document.getElementById("folderPlayButton"),
         folderPlayStopButton: document.getElementById("folderPlayStopButton"),
         folderPlayInput: document.getElementById("folderPlayInput"),
@@ -2089,6 +2177,13 @@
               }
             }
             state.uiVisible = saved.uiVisible !== false;
+            state.sidebarCollapsed = saved.sidebarCollapsed === true;
+            if (saved.folderFilter && typeof saved.folderFilter === "object") {
+              state.folderFilter = {
+                text: typeof saved.folderFilter.text === "string" ? saved.folderFilter.text : "",
+                mode: ["include", "exclude"].includes(saved.folderFilter.mode) ? saved.folderFilter.mode : "off"
+              };
+            }
             if (typeof saved.activeCard === "string" && CARD_KEYS.includes(saved.activeCard)) {
               state.activeCard = saved.activeCard;
             }
@@ -2103,7 +2198,9 @@
         const payload = {
           cards: state.cards,
           uiVisible: state.uiVisible,
-          activeCard: state.activeCard
+          activeCard: state.activeCard,
+          sidebarCollapsed: state.sidebarCollapsed,
+          folderFilter: state.folderFilter
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
       }
@@ -4120,6 +4217,17 @@
           .replaceAll("'", "&#039;");
       }
 
+      function applySidebarCollapsed() {
+        els.app.classList.toggle("sidebar-collapsed", state.sidebarCollapsed);
+        els.sidebarShowButton.hidden = !state.sidebarCollapsed;
+      }
+
+      function setSidebarCollapsed(collapsed) {
+        state.sidebarCollapsed = collapsed;
+        applySidebarCollapsed();
+        saveSettings();
+      }
+
       function setupEvents() {
         els.fileInput.addEventListener("change", event => {
           acceptFiles(event.target.files, "replace");
@@ -4182,6 +4290,19 @@
           }
           const top = entries[0].rel.split("/")[0] || "選択フォルダ";
           beginFolderPlay(sortFolderEntries(entries), top);
+        });
+        applySidebarCollapsed();
+        els.sidebarHideButton.addEventListener("click", () => setSidebarCollapsed(true));
+        els.sidebarShowButton.addEventListener("click", () => setSidebarCollapsed(false));
+        els.folderFilterText.value = state.folderFilter.text;
+        els.folderFilterMode.value = state.folderFilter.mode;
+        els.folderFilterText.addEventListener("input", () => {
+          state.folderFilter.text = els.folderFilterText.value;
+          saveSettings();
+        });
+        els.folderFilterMode.addEventListener("change", () => {
+          state.folderFilter.mode = els.folderFilterMode.value;
+          saveSettings();
         });
         els.fullscreenButton.addEventListener("click", requestFullscreen);
         els.restartButton.addEventListener("click", restartCurrent);
