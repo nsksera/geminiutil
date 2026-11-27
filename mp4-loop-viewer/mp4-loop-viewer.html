@@ -1265,7 +1265,7 @@
       <section class="section">
         <div class="section-title">Selected Videos</div>
         <ul id="fileList" class="file-list"></ul>
-        <p class="app-version">ver 2026.11.27-9</p>
+        <p class="app-version">ver 2026.11.27-10</p>
       </section>
 
       <section class="section">
@@ -1813,20 +1813,27 @@
         return `${formatClock(s)}.${Math.floor((s - Math.floor(s)) * 10)}`;
       }
 
+      let intentionalPause = false;
+
+      function pausePlayer() {
+        intentionalPause = true;
+        els.player.pause();
+      }
+
       function togglePlayPause() {
         if (!getCurrentFile()) return;
         if (els.player.paused) {
           els.player.play().catch(() => {});
           setStatus("再生");
         } else {
-          els.player.pause();
+          pausePlayer();
           setStatus(`一時停止 ${formatTimeFine(els.player.currentTime)}（←→でコマ送り、Cでカット印）`);
         }
       }
 
       function stepFrame(direction) {
         if (!getCurrentFile()) return;
-        els.player.pause();
+        pausePlayer();
         const dur = Number.isFinite(els.player.duration) ? els.player.duration : 0;
         const t = Math.min(Math.max(els.player.currentTime + direction / 30, 0), dur || Infinity);
         try {
@@ -3215,7 +3222,7 @@
           return;
         }
         state.finishedCard = rootKey;
-        els.player.pause();
+        pausePlayer();
         setStatus(rootKey
           ? (state.stackPlayed ? `カード${rootKey}の再生が終わりました（一回だけ）。` : `カード${rootKey}には再生できる動画がありません。`)
           : "再生が終わりました。", !state.stackPlayed);
@@ -4321,7 +4328,7 @@
         });
         els.folderPlayStopButton.addEventListener("click", () => {
           stopFolderPlay();
-          els.player.pause();
+          pausePlayer();
           render();
           setStatus("フォルダ連続再生を停止しました。");
         });
@@ -4367,6 +4374,19 @@
           updateSeekBar();
         });
         els.player.addEventListener("ended", playNextStep);
+        els.player.addEventListener("play", () => { intentionalPause = false; });
+        els.player.addEventListener("pause", () => {
+          if (intentionalPause) {
+            intentionalPause = false;
+            return;
+          }
+          // アプリ側の操作ではない一時停止（ブラウザの描画負荷など）なら自動で再開する
+          window.setTimeout(() => {
+            if (els.player.paused && !els.player.ended && els.player.src && getCurrentFile()) {
+              els.player.play().catch(() => {});
+            }
+          }, 800);
+        });
         window.setInterval(() => {
           const item = getCurrentFile();
           if (!item || item.segEnd == null) return;
