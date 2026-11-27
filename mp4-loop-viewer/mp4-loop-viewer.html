@@ -85,6 +85,10 @@
       display: none;
     }
 
+    .app.sidebar-collapsed .stage {
+      grid-column: 2;
+    }
+
     .sidebar-head {
       display: flex;
       align-items: flex-start;
@@ -1249,7 +1253,7 @@
       <section class="section">
         <div class="section-title">Selected Videos</div>
         <ul id="fileList" class="file-list"></ul>
-        <p class="app-version">ver 2026.11.27-6</p>
+        <p class="app-version">ver 2026.11.27-7</p>
       </section>
 
       <section class="section">
@@ -4234,6 +4238,7 @@
         state.sidebarCollapsed = collapsed;
         applySidebarCollapsed();
         saveSettings();
+        schedulePlayerFit();
       }
 
       function setupEvents() {
