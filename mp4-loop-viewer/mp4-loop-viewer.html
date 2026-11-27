@@ -1265,7 +1265,7 @@
       <section class="section">
         <div class="section-title">Selected Videos</div>
         <ul id="fileList" class="file-list"></ul>
-        <p class="app-version">ver 2026.11.27-8</p>
+        <p class="app-version">ver 2026.11.27-9</p>
       </section>
 
       <section class="section">
@@ -1274,6 +1274,10 @@
         <div class="actions">
           <button id="folderPlayButton" type="button">フォルダを指定して連続再生</button>
           <button id="folderPlayStopButton" type="button">停止</button>
+        </div>
+        <div class="actions">
+          <button id="folderPrevButton" type="button">◀ 前の動画</button>
+          <button id="folderNextButton" type="button">次の動画 ▶</button>
         </div>
         <div class="folder-filter">
           <input id="folderFilterText" type="text" placeholder="ファイル名に含む文字列">
@@ -1932,6 +1936,16 @@
         playFolderAt(state.folderPlay.index + 1);
       }
 
+      function stepFolder(delta) {
+        const fp = state.folderPlay;
+        if (!fp.active) return;
+        if (fp.index + delta < 0) {
+          els.player.currentTime = 0;
+          return;
+        }
+        playFolderAt(fp.index + delta);
+      }
+
       function applyFolderFilter(entries) {
         const text = state.folderFilter.text.trim().toLowerCase();
         if (!text || state.folderFilter.mode === "off") return { files: entries, filteredOut: 0 };
@@ -2153,6 +2167,8 @@
         folderFilterText: document.getElementById("folderFilterText"),
         folderFilterMode: document.getElementById("folderFilterMode"),
         folderProgress: document.getElementById("folderProgress"),
+        folderPrevButton: document.getElementById("folderPrevButton"),
+        folderNextButton: document.getElementById("folderNextButton"),
         folderPlayButton: document.getElementById("folderPlayButton"),
         folderPlayStopButton: document.getElementById("folderPlayStopButton"),
         folderPlayInput: document.getElementById("folderPlayInput"),
@@ -4217,10 +4233,10 @@
           togglePlayPause();
         } else if (event.key === "ArrowRight") {
           event.preventDefault();
-          stepFrame(1);
+          if (state.folderPlay.active) stepFolder(1); else stepFrame(1);
         } else if (event.key === "ArrowLeft") {
           event.preventDefault();
-          stepFrame(-1);
+          if (state.folderPlay.active) stepFolder(-1); else stepFrame(-1);
         } else if (event.key.toLowerCase() === "c" && !event.ctrlKey && !event.metaKey && !event.altKey) {
           event.preventDefault();
           addCutMarkAtCurrentTime();
@@ -4309,6 +4325,8 @@
           render();
           setStatus("フォルダ連続再生を停止しました。");
         });
+        els.folderPrevButton.addEventListener("click", () => stepFolder(-1));
+        els.folderNextButton.addEventListener("click", () => stepFolder(1));
         els.folderPlayInput.addEventListener("change", event => {
           const entries = Array.from(event.target.files)
             .filter(file => file.type.startsWith("video/") || /\.(mp4|m4v|mov|webm|mkv)$/i.test(file.name))
